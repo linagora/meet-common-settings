@@ -1,4 +1,7 @@
-import { Pool } from 'pg';
+import { ilike, sql } from 'drizzle-orm';
+import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { buildMeetUserTable, type MeetUserTable } from './schema/meet-user.js';
 
 export interface UserSettingsUpdate {
   language?: string;
@@ -17,6 +20,8 @@ export interface DbOptions {
   poolSize?: number;
 }
 
+// Defense-in-depth: drizzle quotes identifiers, but rejecting unsafe names at
+// construction time guarantees we never even reach the SQL builder with one.
 const isSafeIdentifier = (value: string): boolean => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value);
 
 export const createDbClient = ({ databaseUrl, userTable, poolSize = 2 }: DbOptions): DbClient => {
@@ -24,33 +29,30 @@ export const createDbClient = ({ databaseUrl, userTable, poolSize = 2 }: DbOptio
     throw new Error(`Refusing to use unsafe table identifier: ${userTable}`);
   }
 
-  const pool = new Pool({ connectionString: databaseUrl, max: poolSize });
-
-  const updateSql = `
-    UPDATE ${userTable}
-       SET language = COALESCE($1, language),
-           timezone = COALESCE($2, timezone),
-           updated_at = NOW()
-     WHERE email ILIKE $3
-  `;
+  const client = postgres(databaseUrl, { max: poolSize });
+  const db: PostgresJsDatabase = drizzle(client);
+  const meetUser: MeetUserTable = buildMeetUserTable(userTable);
 
   return {
     async updateUserSettings(email, updates) {
       if (updates.language === undefined && updates.timezone === undefined) {
         return 0;
       }
-      const result = await pool.query(updateSql, [
-        updates.language ?? null,
-        updates.timezone ?? null,
-        email,
-      ]);
-      return result.rowCount ?? 0;
+      const set: UserSettingsUpdate = {};
+      if (updates.language !== undefined) set.language = updates.language;
+      if (updates.timezone !== undefined) set.timezone = updates.timezone;
+
+      const result = await db
+        .update(meetUser)
+        .set({ ...set, updatedAt: sql`NOW()` })
+        .where(ilike(meetUser.email, email));
+      return result.count ?? 0;
     },
     async ping() {
-      await pool.query('SELECT 1');
+      await db.execute(sql`SELECT 1`);
     },
     async close() {
-      await pool.end();
+      await client.end();
     },
   };
 };

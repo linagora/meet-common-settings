@@ -23,8 +23,10 @@ src/
   config.ts       Env-var parsing with Zod
   consumer.ts     RabbitMQ subscribe loop, ack/throw semantics
   handler.ts      Per-message logic. The interesting part.
-  db.ts           pg pool wrapper, single UPDATE statement
+  db.ts           Drizzle ORM (postgres-js) wrapper around the single UPDATE
   schema.ts       Zod schema for the message envelope and payload
+  schema/
+    meet-user.ts  Drizzle table definition — the subset of Meet's meet_user we touch
   language.ts     ISO 639-1 → Django LANGUAGES mapping
   metrics.ts      prom-client registry and counters
   logger.ts       pino instance plus email hashing helper
@@ -84,10 +86,11 @@ Updating the deployment to pick up the new image is handled separately by whiche
 The shortest path:
 
 1. Add the field to the Zod schema in `src/schema.ts`.
-2. Add a column to the `UPDATE` in `src/db.ts` and to the `UserSettingsUpdate` type. Wrap it in `COALESCE($n, column)` so omitting it leaves the existing value alone.
-3. Extend `handler.ts` to copy the field from `payload` into `updates`, with any validation or mapping you need.
-4. Add tests in `tests/unit/handler.spec.ts` and `tests/integration/db.spec.ts`.
-5. Update the architecture doc's "Which fields we sync" table.
-6. Add the column to the PostgreSQL grant in the [operations](operations.md#database-role) doc and in production.
+2. Add the column to the drizzle table in `src/schema/meet-user.ts` (type and constraints).
+3. Add the field to `UserSettingsUpdate` and to the dynamic SET builder in `src/db.ts`.
+4. Extend `handler.ts` to copy the field from `payload` into `updates`, with any validation or mapping you need.
+5. Add tests in `tests/unit/handler.spec.ts` and `tests/integration/db.spec.ts`.
+6. Update the architecture doc's "Which fields we sync" table.
+7. Add the column to the PostgreSQL grant in the [operations](operations.md#database-role) doc and in production.
 
 Don't ship a new field without granting it. The role is least-privilege by design, so the UPDATE will fail loudly rather than silently drop the column from the write.
