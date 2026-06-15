@@ -1,7 +1,7 @@
 import { pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 
 // Subset of Meet's `meet_user` table — only the columns this service reads or
-// writes. The Django side owns the full schema; mirroring more here would
+// writes. The Meet backend owns the full schema; mirroring more here would
 // just create drift.
 export const buildMeetUserTable = (tableName: string) =>
   pgTable(tableName, {

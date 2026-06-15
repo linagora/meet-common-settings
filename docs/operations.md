@@ -70,7 +70,7 @@ In order of likelihood:
 
 1. **Browser cache.** Meet's frontend caches language. Reload.
 2. **The user has not logged into Meet yet.** Without a `meet_user` row, the UPDATE matches zero rows. Log line: `"no Meet user matched; skipping"`. The user's settings will apply on first login.
-3. **The language code in common-settings is one we don't map.** Look for `"language code has no Django mapping; skipping language update"`. Meet currently only supports `en-us`, `fr-fr`, `nl-nl`, `de-de`. To add another, override `LANGUAGE_MAP_OVERRIDES` (see [configuration](#configuration)) or add it to `src/language.ts`.
+3. **The language code in common-settings is one we don't map.** Look for `"language code has no Django mapping; skipping language update"`. Meet currently only supports `en-us`, `fr-fr`, `nl-nl`, `de-de`, `ru-ru`, `vi-vi`. To add another, override `LANGUAGE_MAP_OVERRIDES` (see [configuration](#configuration)) or add it to `src/language.ts`.
 4. **The service is not consuming.** Check `/readyz` and the broker UI's consumer count for `meet.user_settings`.
 
 ### Postgres is down
