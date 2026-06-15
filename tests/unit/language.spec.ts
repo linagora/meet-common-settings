@@ -10,7 +10,7 @@ describe('buildLanguageMapper', () => {
     ['nl', 'nl-nl'],
     ['de', 'de-de'],
     ['ru', 'ru-ru'],
-    ['vi', 'vi-vi'],
+    ['vi', 'vi-vn'],
   ])('maps %s → %s', (input, expected) => {
     expect(map(input)).toBe(expected);
   });

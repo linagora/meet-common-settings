@@ -1,4 +1,4 @@
-const MEET_BACKEND_LANGUAGES = new Set(['en-us', 'fr-fr', 'nl-nl', 'de-de', 'ru-ru', 'vi-vi']);
+const MEET_BACKEND_LANGUAGES = new Set(['en-us', 'fr-fr', 'nl-nl', 'de-de', 'ru-ru', 'vi-vn']);
 
 const DEFAULT_MAP: Record<string, string> = {
   en: 'en-us',
@@ -6,7 +6,7 @@ const DEFAULT_MAP: Record<string, string> = {
   nl: 'nl-nl',
   de: 'de-de',
   ru: 'ru-ru',
-  vi: 'vi-vi',
+  vi: 'vi-vn',
 };
 
 export type LanguageMapper = (input: string) => string | null;

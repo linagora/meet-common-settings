@@ -51,7 +51,7 @@ If a settings message arrives for a user who has never logged into Meet (and the
 
 | Common-settings payload | Meet column | Notes |
 |---|---|---|
-| `language` (ISO 639-1, e.g. `"en"`) | `meet_user.language` | Mapped to Django's `LANGUAGES` codes (`en-us`, `fr-fr`, `nl-nl`, `de-de`, `ru-ru`, `vi-vi`). Unsupported codes are dropped, not raised. |
+| `language` (ISO 639-1, e.g. `"en"`) | `meet_user.language` | Mapped to Django's `LANGUAGES` codes (`en-us`, `fr-fr`, `nl-nl`, `de-de`, `ru-ru`, `vi-vn`). Unsupported codes are dropped, not raised. |
 | `timezone` (IANA, e.g. `"Europe/Paris"`) | `meet_user.timezone` | Passed through unchanged. |
 | `avatar` | — | Ignored. Meet has no avatar field; adding one is a separate, larger project. |
 | `display_name` | — | Ignored. Meet's `full_name` and `short_name` are populated from OIDC userinfo on every login; writing them here would race with the OIDC backend. |
