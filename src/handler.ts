@@ -72,7 +72,7 @@ export const handleMessage = async (
     } else {
       logger.info(
         { requestId, version, input: payload.language },
-        'language code has no Django mapping; skipping language update',
+        'language code has no Meet backend mapping; skipping language update',
       );
     }
   }

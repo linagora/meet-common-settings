@@ -190,7 +190,7 @@ Vary the payload to walk every outcome label. Each row corresponds to a unique `
 | `{ language: 'fr' }` (no email) | `no_email` |
 | `{ foo: 'bar' }` (no payload) | `invalid_payload` |
 
-The `language` codes the service understands by default are `en`, `fr`, `nl`, `de` (each maps to the Django `XX-XX` form). Anything else is dropped unless you set `LANGUAGE_MAP_OVERRIDES`.
+The `language` codes the service understands by default are `en`, `fr`, `nl`, `de`, `ru`, `vi` (each maps to the Django `XX-XX` form). Anything else is dropped unless you set `LANGUAGE_MAP_OVERRIDES`.
 
 ## Tear it all down
 

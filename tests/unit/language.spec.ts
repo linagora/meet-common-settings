@@ -9,11 +9,13 @@ describe('buildLanguageMapper', () => {
     ['fr', 'fr-fr'],
     ['nl', 'nl-nl'],
     ['de', 'de-de'],
+    ['ru', 'ru-ru'],
+    ['vi', 'vi-vi'],
   ])('maps %s → %s', (input, expected) => {
     expect(map(input)).toBe(expected);
   });
 
-  it('passes through fully-qualified Django codes unchanged', () => {
+  it('passes through fully-qualified Meet backend codes unchanged', () => {
     expect(map('en-us')).toBe('en-us');
     expect(map('fr-fr')).toBe('fr-fr');
   });
