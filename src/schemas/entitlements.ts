@@ -16,6 +16,6 @@ export const domainSubscriptionChangedSchema = z.object({
 
 export const domainUserDeletedSchema = z.object({ internalEmail: z.string().email() });
 
-export const userDeletionRequestedSchema = z.object({ email: z.string().email() });
+export const userDeletedSchema = z.object({ internalEmail: z.string().email() });
 
 export const domainOrganizationDeletedSchema = z.object({ domain: z.string().min(1) });

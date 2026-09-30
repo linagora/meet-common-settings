@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@linagora/rabbitmq-client": "^0.3.1",
+    "@linagora/rabbitmq-client": "^0.4.1",
     "drizzle-orm": "^0.40.1",
     "pino": "^9.5.0",
     "postgres": "^3.4.9",
