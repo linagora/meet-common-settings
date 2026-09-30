@@ -20,7 +20,7 @@ GRANT SELECT (email), UPDATE (language, timezone, updated_at) ON meet_user TO me
 The user in `RABBITMQ_URL` needs:
 
 - `configure` and `read` on the `settings`, `billing`, `b2b` and `auth` exchanges and their dead-letter twins `settings.dlx`, `billing.dlx`, `b2b.dlx` and `auth.dlx`. The service declares all of them on startup and binds its queues to them.
-- `configure`, `write` and `read` on the `meet.user_settings` queue, the five entitlement queues (`meet.subscription.changed`, `meet.domain.subscription.changed`, `meet.domain.user.deleted`, `meet.user.deletion.requested`, `meet.domain.organization.deleted`) and their `.dlq` twins, which the service also declares on startup.
+- `configure`, `write` and `read` on the `meet.user_settings` queue, the five entitlement queues (`meet.subscription.changed`, `meet.domain.subscription.changed`, `meet.domain.user.deleted`, `meet.user.deleted`, `meet.domain.organization.deleted`) and their `.dlq` twins, which the service also declares on startup.
 - The five entitlement queues and their exchanges are only declared when `ENTITLEMENTS_ENABLED=true`. A missing permission there fails the startup of the whole service, settings sync included, so grant them before switching it on.
 
 ## What to monitor

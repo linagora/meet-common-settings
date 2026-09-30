@@ -8,7 +8,7 @@ import {
   domainSubscriptionChangedSchema,
   domainUserDeletedSchema,
   subscriptionChangedSchema,
-  userDeletionRequestedSchema,
+  userDeletedSchema,
 } from '../schemas/entitlements.js';
 
 export interface EntitlementBinding<T = unknown> {
@@ -53,10 +53,10 @@ export const entitlementBindings: EntitlementBinding[] = [
   }),
   binding({
     exchange: 'auth',
-    routingKey: 'user.deletion.requested',
-    schema: userDeletionRequestedSchema,
-    apply: (m, linto) => linto.deleteUser(m.email),
-    subjectOf: (m) => m.email,
+    routingKey: 'user.deleted',
+    schema: userDeletedSchema,
+    apply: (m, linto) => linto.deleteUser(m.internalEmail),
+    subjectOf: (m) => m.internalEmail,
   }),
   binding({
     exchange: 'b2b',

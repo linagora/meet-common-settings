@@ -90,7 +90,7 @@ The same process keeps LinTO Studio's entitlements in step with Twake plans, so 
 - `billing` / `subscription.changed`: `PUT /users/{internalEmail}` with the plan's `meet` block.
 - `billing` / `domain.subscription.changed`: `PUT /domains/{domain}` with the plan's `meet` block.
 - `b2b` / `domain.user.deleted`: `DELETE /users/{internalEmail}`.
-- `auth` / `user.deletion.requested`: `DELETE /users/{email}`.
+- `auth` / `user.deleted`: `DELETE /users/{internalEmail}`.
 - `b2b` / `domain.organization.deleted`: `PUT /domains/{domain}` with no rights.
 
 `updatedAt` is the publish timestamp. A message published without one falls back to its first death time when replayed from its DLQ, and to the receipt time otherwise. Anything Studio does not apply is retried, then dead-lettered, never acked.

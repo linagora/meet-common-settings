@@ -47,7 +47,7 @@ describe('entitlement bindings', () => {
       'billing/subscription.changed',
       'billing/domain.subscription.changed',
       'b2b/domain.user.deleted',
-      'auth/user.deletion.requested',
+      'auth/user.deleted',
       'b2b/domain.organization.deleted',
     ]);
   });
@@ -109,15 +109,32 @@ describe('entitlement bindings', () => {
     expect(linto.deleteUser).toHaveBeenCalledWith('jdoe@acme.com');
   });
 
-  it('user.deletion.requested DELETEs the email', async () => {
+  it('user.deleted DELETEs the internal email', async () => {
     const linto = makeLinto();
     const { result } = await run(
-      'user.deletion.requested',
-      { email: 'jdoe@twake.app', reason: 'user_request', requestedBy: 'op' },
+      'user.deleted',
+      {
+        emitter: 'ldap-rest',
+        type: 'user.deleted',
+        userId: 'jdoe',
+        internalEmail: 'jdoe@twake.app',
+        workplaceFqdn: 'jdoe.twake.app',
+        reason: 'user deleted',
+        reasonCode: 'user_request',
+        mobile: '+33600000000',
+        deletedAt: '2026-09-14T10:30:00.000Z',
+      },
       linto,
     );
     await result;
     expect(linto.deleteUser).toHaveBeenCalledWith('jdoe@twake.app');
+  });
+
+  it('user.deleted without a mail address is dead-lettered', async () => {
+    const linto = makeLinto();
+    const { result } = await run('user.deleted', { userId: 'jdoe' }, linto);
+    await expect(result).rejects.toThrow(/invalid user.deleted/);
+    expect(linto.deleteUser).not.toHaveBeenCalled();
   });
 
   it('domain.organization.deleted clears the domain rights', async () => {
@@ -161,7 +178,7 @@ describe('handleEntitlement', () => {
   it('rethrows a LinTO failure', async () => {
     const linto = makeLinto();
     linto.deleteUser.mockRejectedValue(new LintoError(503));
-    const { result, outcome } = await run('user.deletion.requested', { email: 'a@b.com' }, linto);
+    const { result, outcome } = await run('user.deleted', { internalEmail: 'a@b.com' }, linto);
     await expect(result).rejects.toEqual(new LintoError(503));
     expect(await outcome()).toBe('failed');
   });
