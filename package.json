@@ -2,7 +2,7 @@
   "name": "meet-side-service",
   "version": "0.2.0",
   "private": true,
-  "description": "Sidecar that consumes user settings update messages from RabbitMQ and applies them to Meet's PostgreSQL database",
+  "description": "Side service of Meet: applies Twake settings and plan events to Meet's database and LinTO Studio",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node --import ./dist/instrument.js dist/main.js",
-    "dev": "tsx watch --import ./src/instrument.ts src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env --import ./src/instrument.ts src/main.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

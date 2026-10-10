@@ -1,6 +1,6 @@
 # meet-side-service
 
-Sidecar service for Meet. It consumes Twake Workplace events from RabbitMQ and applies them where Meet reads them:
+Side service of Meet in Twake Workplace. It consumes Twake events from RabbitMQ and applies them where Meet reads them:
 
 - User settings (language, timezone) from common-settings go to Meet's PostgreSQL database.
 - Plan entitlements (transcription, recording) go to LinTO Studio. This part is off unless `ENTITLEMENTS_ENABLED=true`.
@@ -9,14 +9,16 @@ Sidecar service for Meet. It consumes Twake Workplace events from RabbitMQ and a
 
 ```sh
 npm install
-cp .env.example .env  # then edit
+docker compose up -d --wait
+cp .env.example .env
 npm run dev
-npm run test:unit  # npm test also runs the integration tests, which need Docker
+npm run check  # lint, format, types, tests (the integration tests need Docker), build
 ```
 
 ## Documentation
 
-- [Architecture](docs/architecture.md): what the service does, message flow, design rationale. Entitlements are covered in [their own section](docs/architecture.md#entitlements) and in [ADR 061](https://github.com/linagora/twake-workplace-private/pull/1745).
-- [Operations](docs/operations.md): [configuration](docs/operations.md#configuration), database and RabbitMQ permissions, endpoints and metrics, troubleshooting.
-- [Development](docs/development.md): project layout, tests, releasing.
-- [Running locally](docs/running-locally.md): end-to-end smoke test against Docker PostgreSQL and RabbitMQ.
+- [Architecture](docs/architecture.md): what the service does, its queue, outcomes and retries, and why.
+- [Events](docs/events.md): every event consumed and what it does.
+- [Product](docs/product.md): what it reads and writes in Meet's database, and every LinTO Studio call.
+- [Deploy](docs/deploy.md): settings, permissions, probes, metrics, upgrades, troubleshooting, and running it locally.
+- [Development](docs/development.md): tests, checks, releasing, following a Meet upgrade.

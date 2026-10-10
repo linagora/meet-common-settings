@@ -1,0 +1,36 @@
+# Postgres with Meet's meet_user table and RabbitMQ with the publishers'
+# exchanges, for `npm run dev`. See docs/deploy.md#running-locally.
+name: meet-side-service
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: meet
+      POSTGRES_USER: meet
+      POSTGRES_PASSWORD: meet
+    ports:
+      - '5433:5432'
+    volumes:
+      - ./src/product/meet_user.sql:/docker-entrypoint-initdb.d/01-meet_user.sql:ro
+      - ./dev/postgres.sql:/docker-entrypoint-initdb.d/02-dev.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U meet -d meet']
+      interval: 1s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      # The dev user (password dev) and the publishers' exchanges, which the
+      # service only checks exist.
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbit load_definitions "/etc/rabbitmq/dev.json"
+    ports:
+      - '5673:5672'
+      - '15673:15672'
+    volumes:
+      - ./dev/rabbitmq.json:/etc/rabbitmq/dev.json:ro
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
+      interval: 2s
+      retries: 30
