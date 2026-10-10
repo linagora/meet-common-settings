@@ -109,7 +109,7 @@ All configuration is via environment variables. Defaults are listed in [`.env.ex
 | `RABBITMQ_EXCHANGE`        | no       | `settings`              | Topic exchange to bind to.                                                                                                                                                 |
 | `RABBITMQ_ROUTING_KEY`     | no       | `user.settings.updated` | Binding key.                                                                                                                                                               |
 | `RABBITMQ_QUEUE`           | no       | `meet.user_settings`    | Consumer queue name.                                                                                                                                                       |
-| `RABBITMQ_PREFETCH`        | no       | `1`                     | QoS prefetch. Keep at 1 to preserve ordering.                                                                                                                              |
+| `RABBITMQ_PREFETCH`        | no       | `1`                     | QoS prefetch of the settings queue. The entitlement queues handle one message at a time whatever it is.                                                                    |
 | `RABBITMQ_MAX_RETRIES`     | no       | `20`                    | Handler attempts before the message is sent to the DLQ.                                                                                                                    |
 | `RABBITMQ_RETRY_DELAY`     | no       | `1000`                  | First delay between handler attempts, in ms. It doubles on each attempt.                                                                                                   |
 | `RABBITMQ_MAX_RETRY_DELAY` | no       | `60000`                 | Cap on the delay between handler attempts, in ms.                                                                                                                          |
@@ -133,4 +133,4 @@ The entitlement consumers are off unless `ENTITLEMENTS_ENABLED=true` (only `true
 
 ## Restarts and single-consumer invariant
 
-The ordering guarantee relies on at most one consumer being attached to the queue at any time. Whatever runs this service must enforce that: do not scale to multiple replicas, and stop the old process before starting a new one during upgrades. Brief downtime is harmless — messages accumulate in the queue and drain when the new process is up.
+Settings messages are guarded by their event time and can be handled in any order. The entitlement queues still rely on at most one consumer each, since a LinTO `DELETE` carries no `updatedAt`: do not scale to multiple replicas while entitlements are on, and stop the old process before starting a new one during upgrades. Brief downtime is harmless, as messages accumulate in the queue and drain when the new process is up.

@@ -95,6 +95,10 @@ describe('handleMessage', () => {
     ['an envelope without payload', { timestamp: published, nickname: 'alice' }],
     ['an envelope without timestamp', { payload: { email: 'alice@example.com', language: 'en' } }],
     ['an invalid email', event({ email: 'not-an-email', language: 'en' })],
+    [
+      'a timestamp in the future, which would freeze the user',
+      event({ email: 'alice@example.com', language: 'en' }, Date.now() * 1000),
+    ],
   ])('throws a malformed event error on %s', async (_, message) => {
     const { db, handle } = setup();
     await expect(handle(message)).rejects.toBeInstanceOf(MalformedEventError);

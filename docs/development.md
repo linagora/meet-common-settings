@@ -30,7 +30,7 @@ src/
     port.ts       The interfaces the handlers depend on
     fake.ts       In-memory Meet database and LinTO for unit tests
     api.ts        LinTO Studio entitlements API client
-    db.ts         Drizzle ORM (postgres-js) wrapper around the single UPDATE
+    db.ts         Drizzle ORM (postgres-js) settings write, guarded by updated_at
     meet-user.ts  Drizzle table definition, the subset of Meet's meet_user we touch
   modules/
     settings/
