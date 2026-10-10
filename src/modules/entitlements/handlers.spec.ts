@@ -16,7 +16,7 @@ const bindingFor = (routingKey: string) => {
   return binding;
 };
 
-const run = async (
+const run = (
   routingKey: string,
   message: unknown,
   linto = createFakeLinto(),
@@ -45,7 +45,7 @@ describe('entitlement bindings', () => {
 
   it('subscription.changed PUTs the user with only the meet block', async () => {
     const linto = createFakeLinto();
-    const { result, outcome } = await run(
+    const { result, outcome } = run(
       'subscription.changed',
       {
         twakeId: 'jdoe',
@@ -66,7 +66,7 @@ describe('entitlement bindings', () => {
 
   it('sends empty features when the plan carries no meet block', async () => {
     const linto = createFakeLinto();
-    const { result } = await run(
+    const { result } = run(
       'subscription.changed',
       { twakeId: 'jdoe', internalEmail: 'jdoe@twake.app', features: { mail: {} } },
       linto,
@@ -77,7 +77,7 @@ describe('entitlement bindings', () => {
 
   it('domain.subscription.changed PUTs the domain', async () => {
     const linto = createFakeLinto();
-    const { result } = await run(
+    const { result } = run(
       'domain.subscription.changed',
       { domain: 'acme.com', features: { stack: { featureSets: ['p1'] }, meet } },
       linto,
@@ -89,7 +89,7 @@ describe('entitlement bindings', () => {
   it('domain.user.deleted DELETEs the internal email', async () => {
     const linto = createFakeLinto();
     await linto.putUser('jdoe@acme.com', { features: meet, updatedAt: publishedIso });
-    const { result } = await run(
+    const { result } = run(
       'domain.user.deleted',
       { internalEmail: 'jdoe@acme.com', domain: 'acme.com', organizationId: 'o1' },
       linto,
@@ -101,7 +101,7 @@ describe('entitlement bindings', () => {
   it('user.deleted DELETEs the internal email', async () => {
     const linto = createFakeLinto();
     await linto.putUser('jdoe@twake.app', { features: meet, updatedAt: publishedIso });
-    const { result } = await run(
+    const { result } = run(
       'user.deleted',
       {
         emitter: 'ldap-rest',
@@ -123,14 +123,14 @@ describe('entitlement bindings', () => {
   it('user.deleted without a mail address is dead-lettered', async () => {
     const linto = createFakeLinto();
     await linto.putUser('jdoe@twake.app', { features: meet, updatedAt: publishedIso });
-    const { result } = await run('user.deleted', { userId: 'jdoe' }, linto);
+    const { result } = run('user.deleted', { userId: 'jdoe' }, linto);
     await expect(result).rejects.toThrow(/invalid user.deleted/);
     expect(linto.users.has('jdoe@twake.app')).toBe(true);
   });
 
   it('domain.organization.deleted clears the domain rights', async () => {
     const linto = createFakeLinto();
-    const { result } = await run(
+    const { result } = run(
       'domain.organization.deleted',
       { domain: 'acme.com', organizationId: 'o1' },
       linto,
@@ -144,11 +144,7 @@ describe('handleEntitlement', () => {
   it('counts an order-guard hit as ignored, not applied', async () => {
     const linto = createFakeLinto();
     await linto.putDomain('acme.com', { features: meet, updatedAt: '2026-01-01T00:00:00.000Z' });
-    const { result, outcome } = await run(
-      'domain.organization.deleted',
-      { domain: 'acme.com' },
-      linto,
-    );
+    const { result, outcome } = run('domain.organization.deleted', { domain: 'acme.com' }, linto);
     await result;
     expect(await outcome()).toBe('ignored');
     expect(linto.domains.get('acme.com')?.features).toEqual(meet);
@@ -156,7 +152,7 @@ describe('handleEntitlement', () => {
 
   it('throws on an invalid message so it is dead-lettered, never acked', async () => {
     const linto = createFakeLinto();
-    const { result, outcome } = await run(
+    const { result, outcome } = run(
       'subscription.changed',
       { internalEmail: 'not-an-email' },
       linto,
@@ -169,11 +165,7 @@ describe('handleEntitlement', () => {
   it('rethrows a LinTO failure', async () => {
     const linto = createFakeLinto();
     linto.failWith(new LintoError(503, ''));
-    const { result, outcome } = await run(
-      'user.deleted',
-      { internalEmail: 'jdoe@twake.app' },
-      linto,
-    );
+    const { result, outcome } = run('user.deleted', { internalEmail: 'jdoe@twake.app' }, linto);
     await expect(result).rejects.toEqual(new LintoError(503, ''));
     expect(await outcome()).toBe('failed');
   });

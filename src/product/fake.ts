@@ -5,18 +5,25 @@ interface UserSettings {
   timezone: string;
 }
 
-export const createFakeDb = (users: Record<string, UserSettings> = {}) => {
-  const rows = new Map(Object.entries(users).map(([email, s]) => [email.toLowerCase(), { ...s }]));
+const failer = () => {
   let failure: Error | undefined;
-  const fail = () => {
-    if (failure) throw failure;
-  };
-
   return {
-    users: rows,
     failWith(error: Error) {
       failure = error;
     },
+    fail() {
+      if (failure) throw failure;
+    },
+  };
+};
+
+export const createFakeDb = (users: Record<string, UserSettings> = {}) => {
+  const rows = new Map(Object.entries(users).map(([email, s]) => [email.toLowerCase(), { ...s }]));
+  const { failWith, fail } = failer();
+
+  return {
+    users: rows,
+    failWith,
     async updateUserSettings(email: string, updates: UserSettingsUpdate) {
       fail();
       const row = rows.get(email.toLowerCase());
@@ -35,10 +42,7 @@ export const createFakeDb = (users: Record<string, UserSettings> = {}) => {
 export const createFakeLinto = () => {
   const users = new Map<string, EntitlementBody>();
   const domains = new Map<string, EntitlementBody>();
-  let failure: Error | undefined;
-  const fail = () => {
-    if (failure) throw failure;
-  };
+  const { failWith, fail } = failer();
   const put = (records: Map<string, EntitlementBody>, key: string, body: EntitlementBody) => {
     fail();
     const current = records.get(key.toLowerCase());
@@ -50,9 +54,7 @@ export const createFakeLinto = () => {
   return {
     users,
     domains,
-    failWith(error: Error) {
-      failure = error;
-    },
+    failWith,
     async putUser(email: string, body: EntitlementBody) {
       return put(users, email, body);
     },
