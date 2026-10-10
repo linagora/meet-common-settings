@@ -1,7 +1,6 @@
 import { DeadLetterError } from '@linagora/rabbitmq-client';
-import type { Logger } from '../infra/logger.js';
 
-// An event that can never be processed: logged and dropped.
+// An event that can never be processed: logged by the handler, then dropped.
 export class MalformedEventError extends Error {
   override name = 'MalformedEventError';
 }
@@ -11,12 +10,11 @@ export class MalformedEventError extends Error {
 export class RejectedEventError extends DeadLetterError {}
 
 export const dropMalformed =
-  <A extends unknown[]>(handler: (...args: A) => Promise<unknown>, logger: Logger) =>
+  <A extends unknown[]>(handler: (...args: A) => Promise<unknown>) =>
   async (...args: A): Promise<void> => {
     try {
       await handler(...args);
     } catch (err) {
       if (!(err instanceof MalformedEventError)) throw err;
-      logger.warn({ reason: err.message }, 'malformed event dropped');
     }
   };

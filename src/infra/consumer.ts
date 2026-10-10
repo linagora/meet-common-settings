@@ -48,7 +48,7 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
         config.RABBITMQ_EXCHANGE,
         config.RABBITMQ_ROUTING_KEY,
         config.RABBITMQ_QUEUE,
-        dropMalformed((message: Record<string, unknown>) => handleMessage(message, deps), logger),
+        dropMalformed((message: Record<string, unknown>) => handleMessage(message, deps)),
         { maxRetryDelay: config.RABBITMQ_MAX_RETRY_DELAY },
       );
       const { linto } = deps;
@@ -58,10 +58,8 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
             binding.exchange,
             binding.routingKey,
             `meet.${binding.routingKey}`,
-            dropMalformed(
-              (message, properties) =>
-                handleEntitlement(binding, message, properties, { ...deps, linto }),
-              logger,
+            dropMalformed((message, properties) =>
+              handleEntitlement(binding, message, properties, { ...deps, linto }),
             ),
             // Ordering holds only one message at a time, whatever RABBITMQ_PREFETCH
             // the settings queue runs with.

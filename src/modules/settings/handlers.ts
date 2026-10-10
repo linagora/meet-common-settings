@@ -15,14 +15,14 @@ export interface HandlerDeps {
   metrics: Metrics;
 }
 
-// Only an error Postgres answered can be permanent. Network errors and timeouts
-// are retried. SQLSTATE class 08 = connection exceptions, 53 = insufficient
-// resources, 57 = operator intervention (statement timeout included),
-// 40001/40P01 = serialization failure and deadlock.
-const isPermanentError = (err: Error): boolean => {
+// Permanent: SQLSTATE class 22 (data exception), 23 (integrity constraint) and
+// 42 (undefined column, missing grant). Anything else, a failover or a timeout
+// included, is retried. A driver error may come wrapped in its cause.
+const isPermanentError = (err: unknown): boolean => {
+  if (!(err instanceof Error)) return false;
   const { code } = err as { code?: unknown };
-  if (err.name !== 'PostgresError' || typeof code !== 'string') return false;
-  return !(/^(08|53|57)/.test(code) || code === '40001' || code === '40P01');
+  if (err.name === 'PostgresError' && typeof code === 'string') return /^(22|23|42)/.test(code);
+  return isPermanentError(err.cause);
 };
 
 export const handleMessage = async (

@@ -93,6 +93,7 @@ describe('handleMessage', () => {
     ['a Postgres class 08 error', postgresError('08006')],
     ['a statement timeout', postgresError('57014')],
     ['a deadlock', postgresError('40P01')],
+    ['a read-only replica during failover', postgresError('25006')],
   ])('rethrows %s for the client to retry', async (_, props) => {
     const { db, handle } = setup();
     const error = Object.assign(new Error('connection lost'), props);
@@ -107,5 +108,12 @@ describe('handleMessage', () => {
     const err = await handle(update).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RejectedEventError);
     expect((err as RejectedEventError).cause).toBe(error);
+  });
+
+  it('sees a permanent database error through a wrapping error', async () => {
+    const { db, handle } = setup();
+    const cause = Object.assign(new Error('permission denied'), postgresError('42501'));
+    db.failWith(new Error('Failed query', { cause }));
+    await expect(handle(update)).rejects.toBeInstanceOf(RejectedEventError);
   });
 });

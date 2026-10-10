@@ -20,7 +20,8 @@ export class LintoError extends Error {
   }
 }
 
-const isPermanent = (status: number) => status >= 400 && status < 500 && status !== 429;
+const isPermanent = (status: number) =>
+  status >= 400 && status < 500 && status !== 408 && status !== 429;
 
 export const createLintoClient = ({
   baseUrl,

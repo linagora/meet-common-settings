@@ -93,7 +93,7 @@ The same process keeps LinTO Studio's entitlements in step with Twake plans, so 
 - `auth` / `user.deleted`: `DELETE /users/{internalEmail}`.
 - `b2b` / `domain.organization.deleted`: `PUT /domains/{domain}` with no rights.
 
-`updatedAt` is the publish timestamp. A message published without one falls back to its first death time when replayed from its DLQ, and to the receipt time otherwise. Anything Studio does not apply is retried, then dead-lettered, never acked.
+`updatedAt` is the publish timestamp. A message published without one falls back to its first death time when replayed from its DLQ, and to the receipt time otherwise. A message that fails its schema is logged and dropped. A `4xx` from Studio other than `408` or `429` dead letters the message at once, and any other failure is retried, then dead lettered. A `404` on a `DELETE` counts as done, the user being already gone.
 
 ## Why a sidecar instead of merging into common-settings
 

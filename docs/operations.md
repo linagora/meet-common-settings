@@ -39,7 +39,7 @@ The service exposes these on `/metrics`:
 - `mss_messages_processed_total{outcome}` — counter, one increment per processed message.
 - `mss_message_latency_seconds{outcome}` — histogram of per-message wall time including the database call.
 - `mss_db_errors_total` — counter, increments on any database exception (transient or permanent).
-- `mss_entitlement_calls_total{event,outcome}` — counter, one increment per handler attempt. `outcome` is `applied`, `ignored` (LinTO already holds newer state), `invalid` (dropped), `rejected` (LinTO answered a `4xx` other than `429`, dead lettered at once) or `failed`. A failed call is retried up to `RABBITMQ_MAX_RETRIES` times, each attempt counted, then dead lettered, so one message can add that many.
+- `mss_entitlement_calls_total{event,outcome}`: counter, one increment per handler attempt. `outcome` is `applied`, `ignored` (LinTO already holds newer state), `invalid` (dropped), `rejected` (LinTO answered a `4xx` other than `408` or `429`, dead lettered at once) or `failed`. A failed call is retried up to `RABBITMQ_MAX_RETRIES` times, each attempt counted, then dead lettered, so one message can add that many.
 - Plus the default Node.js process metrics (heap, event loop lag, GC).
 
 Suggested alerts:
@@ -85,7 +85,7 @@ Outages shorter than that cost a delay, not data. For longer outages, you have t
 
 ### A column was renamed in Meet
 
-You will see `mss_messages_processed_total{outcome="rejected"}` climb sharply, and every message logs `"permanent database error; dead lettering"` with Postgres error code `42703`. Each message goes to the DLQ without retries, so nothing is lost: replay the DLQ once the fix is deployed.
+You will see `mss_messages_processed_total{outcome="rejected"}` climb sharply, and every message logs `"permanent database error; dead lettering"` with Postgres error code `42703`. Each message goes to the DLQ without retries, so nothing is lost. Settings messages carry no ordering guard yet: a replayed message overwrites whatever a newer one set for the same user, so replay the window before newer changes pile up, or drop the messages of users who changed their settings since.
 
 Fix path:
 

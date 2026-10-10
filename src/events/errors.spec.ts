@@ -1,29 +1,26 @@
 import { DeadLetterError } from '@linagora/rabbitmq-client';
-import pino from 'pino';
 import { describe, expect, it } from 'vitest';
 import { dropMalformed, MalformedEventError, RejectedEventError } from './errors.js';
-
-const logger = pino({ level: 'silent' });
 
 describe('dropMalformed', () => {
   it('acks a malformed event', async () => {
     const handler = dropMalformed(async () => {
       throw new MalformedEventError('no payload');
-    }, logger);
+    });
     await expect(handler()).resolves.toBeUndefined();
   });
 
   it('lets a rejected event through for the client to dead letter', async () => {
     const handler = dropMalformed(async () => {
       throw new RejectedEventError('refused');
-    }, logger);
+    });
     await expect(handler()).rejects.toBeInstanceOf(RejectedEventError);
   });
 
   it('lets any other error through for the client to retry', async () => {
     const handler = dropMalformed(async () => {
       throw new Error('down');
-    }, logger);
+    });
     await expect(handler()).rejects.toThrow('down');
   });
 });

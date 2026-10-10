@@ -73,7 +73,7 @@ describe('createLintoClient', () => {
     );
   });
 
-  it.each([429, 500, 503])(
+  it.each([408, 429, 500, 503])(
     'throws %i after a single call, with the response body',
     async (status) => {
       const fetchMock = stubFetch(new Response('{"code":"invalid_body"}', { status }));
