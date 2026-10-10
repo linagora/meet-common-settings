@@ -39,7 +39,8 @@ jobs:
 
       - name: Probe it
         run: |
-          curl -fs --retry 30 --retry-connrefused --retry-delay 1 localhost:8080/health/live
+          # Docker's port proxy resets connections until the server listens.
+          curl -fs --retry 30 --retry-all-errors --retry-delay 1 localhost:8080/health/live
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/health/ready)" = 503
           curl -fs localhost:9464/metrics | grep -q '^# TYPE mss_events_total counter'
           test "$(docker exec mss id -u)" != 0
