@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 20 or newer.
+- Node.js 24 or newer.
 - Docker (only for the integration tests, which spin up real Postgres and RabbitMQ containers).
 
 ## Setup
@@ -78,7 +78,7 @@ The pre-merge gate is: typecheck clean, lint clean, unit tests pass. Integration
 docker build -t meet-side-service:dev .
 ```
 
-The Dockerfile is a two-stage build. The runtime is `gcr.io/distroless/nodejs20-debian12:nonroot` — no shell, no package manager, no root user. If you need to debug a running container, you can swap the base image temporarily to `node:20-bookworm-slim` for that build.
+The Dockerfile is a two-stage build on `node:24-slim`. The runtime stage holds only the production dependencies and the build, and runs as the image's `node` user (uid 1000).
 
 ## Releasing
 

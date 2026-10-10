@@ -1,6 +1,6 @@
-ARG NODE_VERSION=20.18.0
+ARG NODE_VERSION=24.21.0
 
-FROM node:${NODE_VERSION}-bookworm-slim AS builder
+FROM node:${NODE_VERSION}-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -9,12 +9,12 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
-FROM gcr.io/distroless/nodejs20-debian12:nonroot
+FROM node:${NODE_VERSION}-slim
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=builder --chown=nonroot:nonroot /app/node_modules ./node_modules
-COPY --from=builder --chown=nonroot:nonroot /app/dist ./dist
-COPY --from=builder --chown=nonroot:nonroot /app/package.json ./
-USER nonroot
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/package.json ./
+USER node
 EXPOSE 8080
-CMD ["dist/main.js"]
+CMD ["node", "dist/main.js"]
