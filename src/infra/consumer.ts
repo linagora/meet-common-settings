@@ -16,6 +16,7 @@ import type { HandlerDeps } from '../modules/settings/handlers.js';
 import type { LintoClient } from '../product/port.js';
 import { createLiveness } from './liveness.js';
 import type { Logger } from './logger.js';
+import type { Metrics } from './metrics.js';
 
 export interface Consumer {
   start(): Promise<void>;
@@ -33,6 +34,7 @@ const DISCONNECTED_AFTER_MS = 600_000;
 export interface ConsumerDeps extends HandlerDeps {
   config: Config;
   logger: Logger;
+  metrics: Metrics;
   // Absent when ENTITLEMENTS_ENABLED is off: the entitlement events are then
   // neither bound nor handled.
   linto?: LintoClient;
@@ -55,7 +57,17 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
     // Waiting for the broker, rather than exiting, keeps a pod restarted during
     // an outage from crash looping.
     initMaxAttempts: Infinity,
-    hooks: { onReconnect: (info) => liveness.reconnected(info) },
+    hooks: {
+      onReconnect: (info) => liveness.reconnected(info),
+      // The router reports the dead letters it causes; these are the client's.
+      // The hook has no headers, so a replayed dead letter is labelled with the
+      // default exchange rather than where it was first published.
+      onMessageDlq: ({ exchange, routingKey, reason }) => {
+        if (reason !== 'dead_letter_error') {
+          deps.metrics.event({ exchange, routingKey }, 'dead_lettered');
+        }
+      },
+    },
     logger,
   });
   const abort = new AbortController();
@@ -90,9 +102,10 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
       );
       await client.init();
       const route = liveness.track(
-        routeEvents(routes, (origin) => {
-          deps.metrics.unrouted.inc();
-          logger.warn(origin, 'no handler for this event; dead lettering');
+        routeEvents(routes, (origin, outcome) => {
+          deps.metrics.event(origin, outcome);
+          if (outcome === 'unrouted')
+            logger.warn(origin, 'no handler for this event; dead lettering');
         }),
       );
       await client.subscribe(first!.exchange, first!.routingKey, QUEUE, dropMalformed(route), {

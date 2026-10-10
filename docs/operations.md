@@ -39,21 +39,23 @@ If ready stays at 503 for more than a minute or two, the service is not consumin
 
 The service exposes these on `/metrics` on `METRICS_PORT`, and on `HEALTH_PORT` too for charts that still scrape it there:
 
-- `mss_messages_processed_total{outcome}` — counter, one increment per processed message.
-- `mss_message_latency_seconds{outcome}` — histogram of per-message wall time including the database call.
-- `mss_db_errors_total` — counter, increments on any database exception (transient or permanent).
-- `mss_entitlement_calls_total{event,outcome}`: counter, one increment per handler attempt. `outcome` is `applied`, `ignored` (LinTO already holds newer state), `invalid` (dropped), `rejected` (LinTO answered a `4xx` other than `408` or `429`, dead lettered at once) or `failed`. A failed call is retried up to `RABBITMQ_MAX_RETRIES` times, each attempt counted, then dead lettered, so one message can add that many.
-- `mss_unrouted_total`: counter, messages with no handler for their exchange and routing key, dead lettered.
+- `mss_events_total{exchange,routing_key,outcome}`: counter, one increment per event outcome, labelled with where the event was published. An event redelivered after a lost ack counts again. A dead letter replayed into the queue that runs out of retries again is labelled with the default exchange (`""`) and the queue name. `outcome` is one of:
+  - `handled`: applied, or nothing to apply (no Meet user matches, no field Meet keeps).
+  - `stale`: Meet or LinTO already holds newer state, so nothing changed.
+  - `dropped`: malformed, or a settings change without email. Acked.
+  - `dead_lettered`: refused for good (a permanent database error, a LinTO `4xx` other than `408` or `429`, an entitlement event while entitlements are off), out of retries, or not JSON. Invalid JSON drained from a legacy queue is not counted.
+  - `unrouted`: no handler for its exchange and routing key. Dead lettered.
+- `mss_product_call_duration_seconds{call,result}`: histogram of each call to Meet's database (`meet.update_user_settings`) and to LinTO Studio (`linto.put_user`, `linto.delete_user`, `linto.put_domain`). `result` is `ok` or `error`; its `_count` is the calls by result. A retried event adds one call per attempt.
 - Plus the default Node.js process metrics (heap, event loop lag, GC).
 
 Suggested alerts:
 
-| Alert                   | Condition                                                                               | What it tells you                                                                               |
-| ----------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Service unreachable     | `up{job="meet-side-service"} == 0 for 5m`                                               | The process is down or Prometheus can't scrape.                                                 |
-| Permanent errors rising | `rate(mss_messages_processed_total{outcome="rejected"}[5m]) > 0`                        | Likely a schema drift (a column was renamed or dropped). Investigate immediately.               |
-| Queue is backing up     | A `rabbitmq_queue_messages{queue="meet-side-service"}` alert > N for X minutes          | Either the consumer is slow or `/health/ready` is failing.                                      |
-| DLQ growing             | `rate(rabbitmq_queue_messages_published_total{queue="meet-side-service.dlq"}[15m]) > 0` | Messages are exhausting their retries. Means a sustained DB outage or a poison-message pattern. |
+| Alert               | Condition                                                                               | What it tells you                                                                                           |
+| ------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Service unreachable | `up{job="meet-side-service"} == 0 for 5m`                                               | The process is down or Prometheus can't scrape.                                                             |
+| Dead letters rising | `rate(mss_events_total{outcome="dead_lettered"}[5m]) > 0`                               | A schema drift, a LinTO refusal, an outage outlasting the retries, or entitlements off. The logs say which. |
+| Queue is backing up | A `rabbitmq_queue_messages{queue="meet-side-service"}` alert > N for X minutes          | Either the consumer is slow or `/health/ready` is failing.                                                  |
+| DLQ growing         | `rate(rabbitmq_queue_messages_published_total{queue="meet-side-service.dlq"}[15m]) > 0` | Messages are exhausting their retries. Means a sustained DB outage or a poison-message pattern.             |
 
 ### Logs
 
@@ -62,7 +64,6 @@ Every message produces exactly one structured log line in pino's JSON format. Fi
 - `requestId` — the upstream common-settings request_id, useful for cross-service tracing.
 - `version` — the payload version field.
 - `emailHash` — the first 16 hex chars of `sha256(lowercase(email))`. Lets you correlate without storing PII in your log aggregator.
-- `outcome` — same labels as the metric.
 - `latencyMs` — wall time end-to-end.
 
 The library also emits its own logs through the same pino instance: connection events, retries, DLQ routings.
@@ -89,7 +90,7 @@ Outages shorter than that cost a delay, not data. For longer outages, you have t
 
 ### A column was renamed in Meet
 
-You will see `mss_messages_processed_total{outcome="rejected"}` climb sharply, and every message logs `"permanent database error; dead lettering"` with Postgres error code `42703`. Each message goes to the DLQ without retries, so nothing is lost. Replay the DLQ once the fix is deployed: a replayed message older than a user's current settings is counted `stale` and changes nothing.
+You will see `mss_events_total{outcome="dead_lettered"}` and `mss_product_call_duration_seconds_count{call="meet.update_user_settings",result="error"}` climb sharply, and every message logs `"permanent database error; dead lettering"` with Postgres error code `42703`. Each message goes to the DLQ without retries, so nothing is lost. Replay the DLQ once the fix is deployed: a replayed message older than a user's current settings is counted `stale` and changes nothing.
 
 Fix path:
 

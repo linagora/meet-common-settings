@@ -1,7 +1,6 @@
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
-import { createMetrics } from '../infra/metrics.js';
 import { buildLanguageMapper } from '../modules/settings/language.js';
 import { createFakeDb, createFakeLinto } from '../product/fake.js';
 import { RejectedEventError } from './errors.js';
@@ -11,7 +10,6 @@ const deps = {
   db: createFakeDb({}),
   mapLanguage: buildLanguageMapper(),
   logger: pino({ level: 'silent' }),
-  metrics: createMetrics(),
 };
 const deleted: RabbitMQMessageProperties = {
   exchange: 'auth',

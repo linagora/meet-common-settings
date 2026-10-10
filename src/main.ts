@@ -6,26 +6,38 @@ import { createMetrics } from './infra/metrics.js';
 import { buildLanguageMapper } from './modules/settings/language.js';
 import { createLintoClient } from './product/api.js';
 import { createDbClient } from './product/db.js';
+import type { LintoClient } from './product/port.js';
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
   logger.level = config.LOG_LEVEL;
 
+  const metrics = createMetrics();
   const db = createDbClient({
     databaseUrl: config.DATABASE_URL,
     userTable: config.MEET_USER_TABLE,
   });
-  const metrics = createMetrics();
+  const meet = {
+    ...db,
+    updateUserSettings: metrics.timed('meet.update_user_settings', db.updateUserSettings),
+  };
   const mapLanguage = buildLanguageMapper(config.LANGUAGE_MAP_OVERRIDES);
+  const timedLinto = (client: LintoClient): LintoClient => ({
+    putUser: metrics.timed('linto.put_user', client.putUser),
+    deleteUser: metrics.timed('linto.delete_user', client.deleteUser),
+    putDomain: metrics.timed('linto.put_domain', client.putDomain),
+  });
   // loadConfig guarantees the LINTO_* values are set when entitlements are enabled.
   const linto = config.ENTITLEMENTS_ENABLED
-    ? createLintoClient({
-        baseUrl: config.LINTO_STUDIO_API_URL!,
-        token: config.LINTO_ENTITLEMENTS_TOKEN!,
-        organizationId: config.LINTO_TWAKE_ORG_ID!,
-      })
+    ? timedLinto(
+        createLintoClient({
+          baseUrl: config.LINTO_STUDIO_API_URL!,
+          token: config.LINTO_ENTITLEMENTS_TOKEN!,
+          organizationId: config.LINTO_TWAKE_ORG_ID!,
+        }),
+      )
     : undefined;
-  const consumer = createConsumer({ config, db, mapLanguage, logger, metrics, linto });
+  const consumer = createConsumer({ config, db: meet, mapLanguage, logger, metrics, linto });
   const health = createOpsServers({
     healthPort: config.HEALTH_PORT,
     metricsPort: config.METRICS_PORT,

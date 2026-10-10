@@ -1,6 +1,7 @@
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import { z } from 'zod';
-import { RejectedEventError } from './errors.js';
+import type { EventOrigin, EventOutcome } from '../infra/metrics.js';
+import { MalformedEventError, RejectedEventError } from './errors.js';
 
 export interface Route {
   exchange: string;
@@ -21,16 +22,28 @@ const originOf = ({ exchange, routingKey, headers }: RabbitMQMessageProperties) 
     : { exchange, routingKey };
 };
 
+// A handler resolves `stale` when the product already holds newer state. A
+// failure the client retries has no outcome yet.
 export const routeEvents =
-  (routes: Route[], onUnrouted: (origin: { exchange: string; routingKey?: string }) => void) =>
+  (routes: Route[], onOutcome: (origin: EventOrigin, outcome: EventOutcome) => void) =>
   async (message: unknown, properties: RabbitMQMessageProperties) => {
     const origin = originOf(properties);
     const route = routes.find(
       (r) => r.exchange === origin.exchange && r.routingKey === origin.routingKey,
     );
     if (!route) {
-      onUnrouted(origin);
+      onOutcome(origin, 'unrouted');
       throw new RejectedEventError(`no route for ${origin.exchange}/${origin.routingKey}`);
     }
-    return route.handle(message, properties);
+    let result: unknown;
+    try {
+      result = await route.handle(message, properties);
+    } catch (err) {
+      if (err instanceof MalformedEventError) onOutcome(origin, 'dropped');
+      if (err instanceof RejectedEventError) onOutcome(origin, 'dead_lettered');
+      throw err;
+    }
+    // Outside the try, so a failure here never makes the client run the handler again.
+    onOutcome(origin, result === 'stale' ? 'stale' : 'handled');
+    return result;
   };

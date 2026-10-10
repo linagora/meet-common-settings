@@ -55,13 +55,14 @@ describe('createConsumer (integration)', () => {
       RABBITMQ_URL: container.getAmqpUrl(),
       DATABASE_URL: 'postgres://unused',
     });
+    const metrics = createMetrics();
     const consumer = createConsumer({
       config,
       db,
       linto,
       mapLanguage: buildLanguageMapper(),
       logger: pino({ level: 'silent' }),
-      metrics: createMetrics(),
+      metrics,
     });
     await consumer.start();
     try {
@@ -81,6 +82,9 @@ describe('createConsumer (integration)', () => {
         await expect(probe.checkQueue('meet.subscription.changed')).rejects.toThrow(/NOT_FOUND/);
       });
       expect((await channel.checkQueue('meet-side-service')).consumerCount).toBe(1);
+      expect(await metrics.registry.metrics()).toContain(
+        'mss_events_total{exchange="settings",routing_key="user.settings.updated",outcome="handled"} 1',
+      );
     } finally {
       await consumer.stop();
     }

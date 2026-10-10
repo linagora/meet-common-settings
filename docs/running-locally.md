@@ -185,17 +185,16 @@ Alice's row should now show `fr-fr` / `Europe/Berlin` with a fresh `updated_at`.
 
 ## Scenarios worth exercising
 
-Vary the payload to walk every outcome label. Each row corresponds to a unique `outcome` you'll see in the log and in `mss_messages_processed_total`.
+Vary the payload to walk every branch. The log line names the branch, and `mss_events_total` counts its outcome.
 
-| Payload                                                                     | Expected outcome                                                           |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `{ email: 'alice@example.com', language: 'fr', timezone: 'Europe/Berlin' }` | `updated` (both fields)                                                    |
-| `{ email: 'bob@example.com', language: 'en' }`                              | `updated` (language only)                                                  |
-| `{ email: 'carol@example.com', timezone: 'Asia/Tokyo' }`                    | `updated` (timezone only)                                                  |
-| `{ email: 'ghost@example.com', language: 'de' }`                            | `unknown_user` (no row matches)                                            |
-| `{ email: 'alice@example.com', language: 'es' }`                            | `no_syncable_fields` (Spanish has no Django mapping; no timezone provided) |
-| `{ language: 'fr' }` (no email)                                             | `no_email`                                                                 |
-| `{ foo: 'bar' }` (no payload)                                               | `invalid_payload`                                                          |
+- `{ email: 'alice@example.com', language: 'fr', timezone: 'Europe/Berlin' }`: both fields updated, `handled`.
+- `{ email: 'bob@example.com', language: 'en' }`: language only, `handled`.
+- `{ email: 'carol@example.com', timezone: 'Asia/Tokyo' }`: timezone only, `handled`.
+- `{ email: 'ghost@example.com', language: 'de' }`: no row matches, `handled`.
+- `{ email: 'alice@example.com', language: 'es' }`: Spanish has no Django mapping and there is no timezone, `handled`.
+- The first payload again with an older `timestamp`: `stale`.
+- `{ language: 'fr' }` (no email): `dropped`.
+- `{ foo: 'bar' }` (no payload): `dropped`.
 
 The `language` codes the service understands by default are `en`, `fr`, `nl`, `de`, `ru`, `vi` (each maps to the Django `XX-XX` form). Anything else is dropped unless you set `LANGUAGE_MAP_OVERRIDES`.
 

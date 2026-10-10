@@ -60,11 +60,11 @@ npm run test:integration  # requires docker (testcontainers)
 npm test                  # both
 ```
 
-The unit tests cover the handler exhaustively — every outcome label has at least one test, including the error-classification branches. Integration tests verify the actual SQL runs against a real Postgres image.
+The unit tests cover every branch of the handlers, including the error classification. Integration tests verify the actual SQL runs against a real Postgres image.
 
 When changing behavior:
 
-- Add a unit test for the new outcome.
+- Add a unit test for the new branch.
 - If the change touches the SQL, add an integration test that exercises it.
 - Run `npm test` locally before pushing. CI runs both.
 
