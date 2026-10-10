@@ -1,111 +1,65 @@
 # Architecture
 
-## What this service is for
+`meet-side-service` is the side service of Meet in Twake Workplace, following [ADR 068](https://github.com/linagora/twake-workplace-private/blob/69002475b5beb570de816163d3350e41ec3dd4df/documentation/docs/adrs/adr-068.md). It consumes Twake events from RabbitMQ and applies them where Meet reads them:
 
-Twake Workplace has a central **common-settings** service where users edit their language, timezone, display name, avatar, and other profile fields. When a user saves a change there, common-settings publishes a RabbitMQ message so every other application in the suite can react.
+- A user's language and timezone, saved in common-settings, go to Meet's database.
+- A user's or a domain's plan goes to LinTO Studio, so Meet can gate transcription and recording. This part is off unless `ENTITLEMENTS_ENABLED=true`. [ADR 061](https://github.com/linagora/twake-workplace-private/pull/1745) has the reasoning.
 
-Meet (the LiveKit-based video conferencing app) is one of those applications. It stores its own copy of a user's language and timezone in PostgreSQL. Until now, those values only got refreshed when the user logged into Meet again, because Meet pulls them from OIDC userinfo claims at sign-in time. That meant a user could change their language in common-settings and still see the old language in Meet until the next login.
+It publishes no event and has no database of its own. Meet itself is unchanged.
 
-`meet-side-service` closes that gap. It is a small sidecar that listens to the common-settings exchange and writes the changed fields into Meet's database in near real time. Meet itself is untouched.
-
-## How it fits together
-
-```
-┌────────────────────┐    AMQP (topic)    ┌────────────────────────┐    SQL    ┌────────────┐
-│  common-settings   │ ─────────────────► │  meet-side-service     │ ────────► │  Meet PG   │
-│   (publisher)      │  settings          │   (this service)       │  UPDATE   │  meet_user │
-│                    │  user.settings     │   1 replica            │  by email │            │
-│                    │  .updated          │                        │           │            │
-└────────────────────┘                    └────────────────────────┘           └────────────┘
-```
-
-The service has exactly two outbound connections: RabbitMQ and PostgreSQL. It serves its probes on one HTTP port and its Prometheus metrics on another.
-
-## Why direct database UPDATEs
-
-We considered three approaches:
-
-1. **Direct PostgreSQL UPDATE.** This is what we ship.
-2. **A new service-to-service admin API on Meet** that the sidecar calls over HTTP.
-3. **Embedding the consumer inside Meet's Django backend** as a management command or Celery worker.
-
-Option 2 would have meant changing both repos: adding an authenticated admin endpoint to Meet (today the user-update endpoint is gated by `IsSelf`, so it can only be called by the user themselves), then having the sidecar call it. That's a much bigger surface area for a write that only ever touches two columns.
-
-Option 3 would have coupled Meet's deployment to RabbitMQ, when today its Celery broker is Redis. Adding a new messaging dependency to the main backend felt heavier than necessary.
-
-Option 1 keeps Meet completely untouched. The cost is that the sidecar has to know the table name and column names of Meet's user table. We mitigate that by:
-
-- Granting the sidecar's PostgreSQL role only `SELECT (email, updated_at), UPDATE (language, timezone, updated_at)` on `meet_user`. The blast radius of a schema mistake is bounded.
-- Making the table name configurable via `MEET_USER_TABLE` so a Django rename can be absorbed without a code change.
-- Validating the identifier against an allowlist regex before interpolating it into SQL.
-
-## How users are matched
-
-Common-settings identifies users by `nickname` (a username string). Meet identifies users by `sub` (their OIDC subject claim). There is no direct mapping between the two: `nickname` is not Meet's `sub`.
-
-The one identifier shared by both systems is **email**. Meet's prod deployment already has `OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION=True`, meaning Meet itself uses email as a fallback when sub doesn't resolve. We follow the same convention and match the email case-insensitively.
-
-If a settings message arrives for a user who has never logged into Meet (and therefore has no row in `meet_user`), the UPDATE returns zero rows. We log an info-level event and ack the message. The user's settings will be applied automatically on their first OIDC sign-in, because Meet pulls language and timezone from OIDC userinfo claims at that point.
-
-## Which fields we sync
-
-| Common-settings payload                  | Meet column          | Notes                                                                                                                                             |
-| ---------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `language` (ISO 639-1, e.g. `"en"`)      | `meet_user.language` | Mapped to Django's `LANGUAGES` codes (`en-us`, `fr-fr`, `nl-nl`, `de-de`, `ru-ru`, `vi-vn`). Unsupported codes are dropped, not raised.           |
-| `timezone` (IANA, e.g. `"Europe/Paris"`) | `meet_user.timezone` | Passed through unchanged.                                                                                                                         |
-| `avatar`                                 | —                    | Ignored. Meet has no avatar field; adding one is a separate, larger project.                                                                      |
-| `display_name`                           | —                    | Ignored. Meet's `full_name` and `short_name` are populated from OIDC userinfo on every login; writing them here would race with the OIDC backend. |
-| Everything else                          | —                    | Ignored.                                                                                                                                          |
-
-## Idempotency and ordering
-
-We do not track per-user state. Meet's own `updated_at` is the guard: the handler runs
-
-```sql
-UPDATE meet_user SET language = $1, timezone = $2, updated_at = $event_time
-WHERE lower(email) = lower($3) AND updated_at < $event_time
+```mermaid
+flowchart LR
+  settings[[settings exchange]] --> queue
+  billing[[billing exchange]] --> queue
+  b2b[[b2b exchange]] --> queue
+  auth[[auth exchange]] --> queue
+  queue[(meet-side-service queue)] --> service[meet-side-service]
+  queue -. dead letters .-> dlq[(meet-side-service.dlq)]
+  service -->|UPDATE meet_user| meetdb[(Meet PostgreSQL)]
+  service -->|entitlements API| linto[LinTO Studio]
 ```
 
-The event time is the envelope's `timestamp`, which common-settings sets when it publishes. A redelivered or older event matches no row and is counted `stale`, and so is an event older than a change made in Meet itself, since Meet bumps `updated_at` on every save. A login does not bump it: Meet saves only the changed OIDC claims on login, without `updated_at`. A message without `timestamp` is malformed and dropped.
+- [Events](events.md) lists every event consumed and what it does.
+- [Product](product.md) lists every column read or written in Meet's database and every LinTO Studio call.
+- [Deploy](deploy.md) lists every setting, the permissions, the probes and metrics, and how to run it locally.
 
-Events can therefore be handled in any order and by several consumers at once.
+[Development](development.md#project-layout) maps the code.
 
-## Failure modes and what they mean
+## Why Meet's database directly
 
-Every event ends in one outcome, counted in `mss_events_total{outcome=...}`:
+Meet has no API to write another user's settings: its user endpoint only lets a user update their own record ([`IsSelf`](https://github.com/linto-ai/meet/blob/c1c3bd0eed7ec422417cd667a910046a6a9b507f/src/backend/core/api/viewsets.py#L207)). Adding one, or a RabbitMQ consumer inside Meet's backend, means changing Meet. Writing two columns of `meet_user` does not.
 
-- `handled`: the change is applied, or there is nothing to apply. No row matches the email (the user has not logged into Meet yet), or the message has no language or timezone Meet keeps. Acked.
-- `stale`: the user's row changed after the event, which changes nothing. Acked.
-- `dropped`: the message fails its schema or has no email (`MalformedEventError`). Acked.
-- `dead_lettered`: Postgres or LinTO refused it for good, a missing column for instance (`RejectedEventError`), the retries ran out, or the message is not JSON.
-- `unrouted`: no handler for its exchange and routing key, see [One queue](#one-queue). Dead lettered.
+The cost is that the service depends on Meet's table. That is kept small:
 
-Postgres being unreachable, timing out or answering a transient error is not an outcome yet: the handler throws and the client retries.
-
-The "throw → retry → DLQ" path is provided by `@linagora/rabbitmq-client`: it catches the thrown error and retries up to `RABBITMQ_MAX_RETRIES` attempts, waiting `RABBITMQ_RETRY_DELAY` ms and doubling the wait up to `RABBITMQ_MAX_RETRY_DELAY` ms, then nacks to the dead-letter queue. A `RejectedEventError` skips the retries. The library also has reconnection logic for total broker outages.
+- Its database role can read and write only the columns it uses, so a mistake fails loudly instead of touching anything else.
+- The integration tests run against the table as the deployed Meet version creates it, see [following a Meet upgrade](development.md#following-a-meet-upgrade).
 
 ## One queue
 
-Every event reaches the service through one quorum queue, `meet-side-service`, bound to each routing key it handles. The handler is picked by the exchange and routing key the event was published with. A dead letter moved back into the queue arrives on the default exchange and keeps that origin in its `x-death` header, which the router reads. An event with no handler is logged, counted `unrouted` and dead lettered.
+Every event reaches the service through one quorum queue, `meet-side-service`, bound to each routing key it handles. The queue dead letters to its own exchange, `meet-side-service.dlx`, into `meet-side-service.dlq`, and caps broker redeliveries at 10. The exchanges it binds to belong to their publishers: the service checks that they exist and never declares them.
 
-The queue dead letters to its own exchange, `meet-side-service.dlx`, into `meet-side-service.dlq`, and caps broker redeliveries at 10. The exchanges it binds to belong to their publishers and are only checked, never declared.
+A dead letter moved back into the queue arrives on the default exchange. The router then reads its origin from the `x-death` header.
 
-Events are handled one at a time while entitlements are on, so an outage of Postgres or LinTO holds back the events for the other one too, for as long as the retries last.
+## Outcomes and retries
 
-Earlier releases used one queue per event (`meet.user_settings` and `meet.<routingKey>`). On startup the service unbinds each one it finds, hands what it holds to the same handlers, and deletes it once empty. See [operations](operations.md#upgrading-from-one-queue-per-event).
+Each event ends in one outcome, counted in `mss_events_total`:
 
-## Entitlements
+- `handled`: applied, or nothing to apply. Acked.
+- `stale`: Meet or LinTO already holds newer state, so nothing changes. Acked.
+- `dropped`: the event is malformed. Acked and logged.
+- `dead_lettered`: refused for good, out of retries, or not JSON. Moved to `meet-side-service.dlq`.
+- `unrouted`: no handler for its exchange and routing key. Dead lettered.
 
-The same process keeps LinTO Studio's entitlements in step with Twake plans, so Meet can gate transcription and recording. Each event maps to exactly one Studio call. [ADR 061](https://github.com/linagora/twake-workplace-private/pull/1745) has the reasoning. It is off by default and switched on with `ENTITLEMENTS_ENABLED`; see [operations](operations.md#turning-entitlements-on-or-off).
+A failure that may pass, such as a timeout or a connection refused by Postgres or LinTO, is retried by `@linagora/rabbitmq-client`. It waits `RABBITMQ_RETRY_DELAY` before the second attempt, doubles the wait up to `RABBITMQ_MAX_RETRY_DELAY`, and dead letters after `RABBITMQ_MAX_RETRIES` attempts. With the defaults that covers about 14 minutes of outage. A refusal that will not pass skips the retries. [Events](events.md) says which failures are which.
 
-- `billing` / `subscription.changed`: `PUT /users/{internalEmail}` with the plan's `meet` block.
-- `billing` / `domain.subscription.changed`: `PUT /domains/{domain}` with the plan's `meet` block.
-- `b2b` / `domain.user.deleted`: `DELETE /users/{internalEmail}`.
-- `auth` / `user.deleted`: `DELETE /users/{internalEmail}`.
-- `b2b` / `domain.organization.deleted`: `PUT /domains/{domain}` with no rights.
+While entitlements are on, events are handled one at a time, so an outage of Postgres or LinTO also holds back the events bound for the other one, for as long as the retries last.
 
-`updatedAt` is the publish timestamp. A message published without one falls back to its first death time when replayed from its DLQ, and to the receipt time otherwise. A message that fails its schema is logged and dropped. A `4xx` from Studio other than `408` or `429` dead letters the message at once, and any other failure is retried, then dead lettered. A `404` on a `DELETE` counts as done, the user being already gone.
+## Ordering
 
-## Why a sidecar instead of merging into common-settings
+Settings events can be handled in any order, by any number of consumers. Each write is guarded by Meet's own `updated_at`, see [product](product.md#meet-database).
 
-Each downstream app has its own data model and its own way of representing users. If common-settings carried the fan-out responsibility, it would need to know how to talk to every other app's database, OIDC mapping, validation rules, and schema. Keeping the consumer adjacent to the app it writes to keeps that knowledge in one place. The pattern is repeatable: future apps can copy this service's shape and adapt the handler.
+Entitlement events rely on LinTO's order guard, which compares the `updatedAt` the service sends. A LinTO `DELETE` carries none, so entitlements still need at most one consumer, see [replicas](deploy.md#replicas).
+
+## Upgrading from one queue per event
+
+Releases up to 0.2.0 consumed from one queue per event (`meet.user_settings` and `meet.<routing key>`). On startup the service unbinds each one it finds, hands what it holds to the same handlers, and deletes it once empty. [Deploy](deploy.md#upgrading-from-020) covers the rollout.

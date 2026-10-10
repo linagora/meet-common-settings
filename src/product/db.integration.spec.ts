@@ -7,7 +7,7 @@ import postgres from 'postgres';
 import { createDbClient } from './db.js';
 import type { DbClient } from './port.js';
 
-// The grants docs/operations.md asks for, so the test fails if the client needs more.
+// The grants docs/deploy.md asks for, so the test fails if the client needs more.
 const ROLE_SQL = `
   CREATE ROLE meet_side_service WITH LOGIN PASSWORD 'secret';
   GRANT USAGE ON SCHEMA public TO meet_side_service;
