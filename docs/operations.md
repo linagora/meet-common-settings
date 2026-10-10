@@ -71,7 +71,7 @@ In order of likelihood:
 
 1. **Browser cache.** Meet's frontend caches language. Reload.
 2. **The user has not logged into Meet yet.** Without a `meet_user` row, the UPDATE matches zero rows. Log line: `"no Meet user matched; skipping"`. The user's settings will apply on first login.
-3. **The language code in common-settings is one we don't map.** Look for `"language code has no Django mapping; skipping language update"`. Meet currently only supports `en-us`, `fr-fr`, `nl-nl`, `de-de`, `ru-ru`, `vi-vn`. To add another, override `LANGUAGE_MAP_OVERRIDES` (see [configuration](#configuration)) or add it to `src/mapping/language.ts`.
+3. **The language code in common-settings is one we don't map.** Look for `"language code has no Django mapping; skipping language update"`. Meet currently only supports `en-us`, `fr-fr`, `nl-nl`, `de-de`, `ru-ru`, `vi-vn`. To add another, override `LANGUAGE_MAP_OVERRIDES` (see [configuration](#configuration)) or add it to `src/modules/settings/language.ts`.
 4. **The service is not consuming.** Check `/readyz` and the broker UI's consumer count for `meet.user_settings`.
 
 ### Postgres is down
@@ -89,7 +89,7 @@ You will see `mss_messages_processed_total{outcome="unexpected_error"}` climb sh
 
 Fix path:
 
-- Roll back to the previous image while you update `src/clients/db.ts` to match the new column name (or update the SQL).
+- Roll back to the previous image while you update `src/product/db.ts` to match the new column name (or update the SQL).
 - Release a new image, redeploy.
 - If you have the DLQ wired into something durable, you can also replay the lost window from there.
 

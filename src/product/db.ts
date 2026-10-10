@@ -1,7 +1,7 @@
 import { ilike, sql } from 'drizzle-orm';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { buildMeetUserTable, type MeetUserTable } from '../schemas/meet-user.js';
+import { buildMeetUserTable, type MeetUserTable } from './meet-user.js';
 
 export interface UserSettingsUpdate {
   language?: string;

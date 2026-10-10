@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLanguageMapper } from '../../../src/mapping/language.js';
+import { buildLanguageMapper } from './language.js';
 
 describe('buildLanguageMapper', () => {
   const map = buildLanguageMapper();

@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import pino from 'pino';
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
-import { LintoError, type LintoClient } from '../../../src/clients/linto.js';
-import {
-  entitlementBindings,
-  handleEntitlement,
-  updatedAtOf,
-} from '../../../src/consumers/entitlements.js';
-import { createMetrics } from '../../../src/metrics.js';
+import { createMetrics } from '../../infra/metrics.js';
+import { LintoError, type LintoClient } from '../../product/api.js';
+import { entitlementBindings, handleEntitlement, updatedAtOf } from './handlers.js';
 
 const published = 1_758_448_800; // 2025-09-21T10:00:00Z
 const publishedIso = '2025-09-21T10:00:00.000Z';

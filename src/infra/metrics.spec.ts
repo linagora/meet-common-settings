@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMetrics } from '../../src/metrics.js';
+import { createMetrics } from './metrics.js';
 
 describe('createMetrics', () => {
   it('exposes the service metrics under the mss_ prefix', async () => {

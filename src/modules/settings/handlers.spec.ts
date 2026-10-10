@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import pino from 'pino';
-import type { DbClient, UserSettingsUpdate } from '../../../src/clients/db.js';
-import { handleMessage } from '../../../src/consumers/settings.js';
-import { buildLanguageMapper } from '../../../src/mapping/language.js';
-import { createMetrics } from '../../../src/metrics.js';
+import { createMetrics } from '../../infra/metrics.js';
+import type { DbClient, UserSettingsUpdate } from '../../product/db.js';
+import { handleMessage } from './handlers.js';
+import { buildLanguageMapper } from './language.js';
 
 const silentLogger = pino({ level: 'silent' });
 
@@ -57,10 +57,7 @@ describe('handleMessage', () => {
 
   it('returns no_email when payload has no email', async () => {
     const db = makeDb();
-    const result = await handleMessage(
-      { payload: { language: 'fr' } },
-      { db, ...baseDeps() },
-    );
+    const result = await handleMessage({ payload: { language: 'fr' } }, { db, ...baseDeps() });
     expect(result).toEqual({ status: 'ok', outcome: 'no_email' });
     expect(db.calls).toHaveLength(0);
   });
@@ -148,7 +145,7 @@ describe('handleMessage', () => {
     expect(result.status).toBe('transient_error');
   });
 
-  it('returns ok with unexpected_error outcome for permanent DB errors so the queue isn\'t poisoned', async () => {
+  it("returns ok with unexpected_error outcome for permanent DB errors so the queue isn't poisoned", async () => {
     const err = Object.assign(new Error('column does not exist'), { code: '42703' });
     const db = makeDb(0, err);
     const result = await handleMessage(

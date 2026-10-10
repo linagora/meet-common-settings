@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createLintoClient, LintoError } from '../../../src/clients/linto.js';
+import { createLintoClient, LintoError } from './api.js';
 
 const linto = createLintoClient({
   baseUrl: 'https://studio.example.com/',

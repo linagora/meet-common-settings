@@ -17,4 +17,4 @@ COPY --from=builder --chown=nonroot:nonroot /app/dist ./dist
 COPY --from=builder --chown=nonroot:nonroot /app/package.json ./
 USER nonroot
 EXPOSE 8080
-CMD ["dist/index.js"]
+CMD ["dist/main.js"]

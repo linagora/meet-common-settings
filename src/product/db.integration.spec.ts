@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import postgres from 'postgres';
-import { createDbClient, type DbClient } from '../../../src/clients/db.js';
+import { createDbClient, type DbClient } from './db.js';
 
 const SCHEMA_SQL = `
   CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -47,7 +47,9 @@ describe('createDbClient (integration)', () => {
       timezone: 'Europe/Paris',
     });
     expect(rows).toBe(1);
-    const after = await sql<{ language: string; timezone: string }[]>`SELECT language, timezone FROM meet_user`;
+    const after = await sql<
+      { language: string; timezone: string }[]
+    >`SELECT language, timezone FROM meet_user`;
     expect(after[0]).toEqual({ language: 'fr-fr', timezone: 'Europe/Paris' });
   });
 
@@ -59,7 +61,9 @@ describe('createDbClient (integration)', () => {
   it('only updates fields that are provided', async () => {
     await sql`INSERT INTO meet_user (email, language, timezone) VALUES (${'bob@example.com'}, ${'en-us'}, ${'UTC'})`;
     await client.updateUserSettings('bob@example.com', { timezone: 'Europe/Berlin' });
-    const after = await sql<{ language: string; timezone: string }[]>`SELECT language, timezone FROM meet_user`;
+    const after = await sql<
+      { language: string; timezone: string }[]
+    >`SELECT language, timezone FROM meet_user`;
     expect(after[0]).toEqual({ language: 'en-us', timezone: 'Europe/Berlin' });
   });
 
@@ -81,7 +85,7 @@ describe('createDbClient (integration)', () => {
 
   it('rejects unsafe table identifiers at construction', () => {
     expect(() =>
-      createDbClient({ databaseUrl: 'postgres://x', userTable: "meet_user; DROP TABLE foo --" }),
+      createDbClient({ databaseUrl: 'postgres://x', userTable: 'meet_user; DROP TABLE foo --' }),
     ).toThrow(/unsafe table identifier/);
   });
 });
