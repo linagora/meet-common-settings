@@ -43,7 +43,7 @@ export const createFakeLinto = () => {
     fail();
     const current = records.get(key.toLowerCase());
     if (current && current.updatedAt > body.updatedAt) return { ignored: true };
-    records.set(key.toLowerCase(), body);
+    records.set(key.toLowerCase(), { ...body });
     return { ignored: false };
   };
 

@@ -78,16 +78,18 @@ describe('handleMessage', () => {
   });
 
   it('returns invalid_payload for non-object input', async () => {
-    const { handle } = setup();
+    const { db, handle } = setup();
     expect(await handle('not an object')).toEqual({ status: 'ok', outcome: 'invalid_payload' });
+    expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 
   it('returns invalid_payload when envelope is missing payload', async () => {
-    const { handle } = setup();
+    const { db, handle } = setup();
     expect(await handle({ nickname: 'alice' })).toEqual({
       status: 'ok',
       outcome: 'invalid_payload',
     });
+    expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 
   it('returns invalid_payload when email is not a valid email', async () => {
