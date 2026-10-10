@@ -39,7 +39,7 @@ The service exposes these on `/metrics`:
 - `mss_messages_processed_total{outcome}` — counter, one increment per processed message.
 - `mss_message_latency_seconds{outcome}` — histogram of per-message wall time including the database call.
 - `mss_db_errors_total` — counter, increments on any database exception (transient or permanent).
-- `mss_entitlement_calls_total{event,outcome}` — counter, one increment per handler attempt. `outcome` is `applied`, `ignored` (LinTO already holds newer state), `invalid` or `failed`. The last two are retried up to `RABBITMQ_MAX_RETRIES` times, each attempt counted, then dead-lettered, so one bad message adds that many.
+- `mss_entitlement_calls_total{event,outcome}`: counter, one increment per handler attempt. `outcome` is `applied`, `ignored` (LinTO already holds newer state), `invalid` (dropped), `rejected` (LinTO answered a `4xx` other than `408` or `429`, dead lettered at once) or `failed`. A failed call is retried up to `RABBITMQ_MAX_RETRIES` times, each attempt counted, then dead lettered, so one message can add that many.
 - Plus the default Node.js process metrics (heap, event loop lag, GC).
 
 Suggested alerts:
@@ -47,7 +47,7 @@ Suggested alerts:
 | Alert                   | Condition                                                                                 | What it tells you                                                                               |
 | ----------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Service unreachable     | `up{job="meet-side-service"} == 0 for 5m`                                                 | The process is down or Prometheus can't scrape.                                                 |
-| Permanent errors rising | `rate(mss_messages_processed_total{outcome="unexpected_error"}[5m]) > 0`                  | Likely a schema drift (a column was renamed or dropped). Investigate immediately.               |
+| Permanent errors rising | `rate(mss_messages_processed_total{outcome="rejected"}[5m]) > 0`                          | Likely a schema drift (a column was renamed or dropped). Investigate immediately.               |
 | Queue is backing up     | A `rabbitmq_queue_messages{queue="meet.user_settings"}` alert > N for X minutes           | Either the consumer is slow or `/readyz` is down. Check the readiness probe reason.             |
 | DLQ growing             | `rate(rabbitmq_queue_messages_published_total{queue=~"meet.user_settings.dlq"}[15m]) > 0` | Messages are exhausting their retries. Means a sustained DB outage or a poison-message pattern. |
 
@@ -76,22 +76,22 @@ In order of likelihood:
 
 ### Postgres is down
 
-Each message in flight is retried up to `RABBITMQ_MAX_RETRIES` (default 5) times with a `RABBITMQ_RETRY_DELAY` ms (default 1000) wait between attempts. After exhausting retries, the message goes to the DLQ. Subsequent messages keep flowing into the queue.
+Each message in flight is retried up to `RABBITMQ_MAX_RETRIES` (default 20) times. The wait starts at `RABBITMQ_RETRY_DELAY` ms (default 1000) and doubles up to `RABBITMQ_MAX_RETRY_DELAY` ms (default 60000), so a message rides out about 14 minutes of outage. After that it goes to the DLQ. Queries time out after 5 seconds and connections after 10, and both count as transient.
 
-For brief outages (under a few seconds) this is fine — the in-flight message is retried and succeeds. For longer outages, you have two options:
+Outages shorter than that cost a delay, not data. For longer outages, you have two options:
 
 - **Let it DLQ.** Once Postgres is back up, replay the DLQ. The `@linagora/rabbitmq-client` docs cover how the DLQ is named and how to drain it.
 - **Stop the consumer process** before retries exhaust. The queue will fill but no messages will be lost. Restart when Postgres is healthy.
 
 ### A column was renamed in Meet
 
-You will see `mss_messages_processed_total{outcome="unexpected_error"}` climb sharply, every message logs `"permanent database error; acking to avoid poison-message loop"` with Postgres error code `42703`. The service acks the messages (so they're not retried in a loop), and the data is silently lost until you ship a fix.
+You will see `mss_messages_processed_total{outcome="rejected"}` climb sharply, and every message logs `"permanent database error; dead lettering"` with Postgres error code `42703`. Each message goes to the DLQ without retries, so nothing is lost. Settings messages carry no ordering guard yet: a replayed message overwrites whatever a newer one set for the same user, so replay the window before newer changes pile up, or drop the messages of users who changed their settings since.
 
 Fix path:
 
 - Roll back to the previous image while you update `src/product/db.ts` to match the new column name (or update the SQL).
 - Release a new image, redeploy.
-- If you have the DLQ wired into something durable, you can also replay the lost window from there.
+- Replay the DLQ.
 
 ### Broker outage
 
@@ -103,21 +103,22 @@ If the outage is permanent (broker decommissioned, URL changed), update `RABBITM
 
 All configuration is via environment variables. Defaults are listed in [`.env.example`](../.env.example).
 
-| Variable                 | Required | Default                 | What it does                                                                                                                                                               |
-| ------------------------ | -------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RABBITMQ_URL`           | yes      | —                       | AMQP DSN.                                                                                                                                                                  |
-| `RABBITMQ_EXCHANGE`      | no       | `settings`              | Topic exchange to bind to.                                                                                                                                                 |
-| `RABBITMQ_ROUTING_KEY`   | no       | `user.settings.updated` | Binding key.                                                                                                                                                               |
-| `RABBITMQ_QUEUE`         | no       | `meet.user_settings`    | Consumer queue name.                                                                                                                                                       |
-| `RABBITMQ_PREFETCH`      | no       | `1`                     | QoS prefetch. Keep at 1 to preserve ordering.                                                                                                                              |
-| `RABBITMQ_MAX_RETRIES`   | no       | `5`                     | Handler retries before the message is sent to the DLQ.                                                                                                                     |
-| `RABBITMQ_RETRY_DELAY`   | no       | `1000`                  | Delay between handler retries, in ms.                                                                                                                                      |
-| `DATABASE_URL`           | yes      | —                       | PostgreSQL DSN for the Meet database.                                                                                                                                      |
-| `MEET_USER_TABLE`        | no       | `meet_user`             | User table override, in case Django renames it.                                                                                                                            |
-| `LANGUAGE_MAP_OVERRIDES` | no       | `{}`                    | JSON map of additional ISO-639-1 → Django language codes. Example: `{"es":"fr-fr"}`.                                                                                       |
-| `LOG_LEVEL`              | no       | `info`                  | pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`.                                                                                                            |
-| `HEALTH_PORT`            | no       | `8080`                  | Port for `/healthz`, `/readyz`, `/metrics`.                                                                                                                                |
-| `SHUTDOWN_TIMEOUT_MS`    | no       | `10000`                 | Grace period on SIGTERM. The broker client uses the same value as its `closeTimeout`, so this is how long we'll wait for in-flight handlers to finish before forcing exit. |
+| Variable                   | Required | Default                 | What it does                                                                                                                                                               |
+| -------------------------- | -------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RABBITMQ_URL`             | yes      | —                       | AMQP DSN.                                                                                                                                                                  |
+| `RABBITMQ_EXCHANGE`        | no       | `settings`              | Topic exchange to bind to.                                                                                                                                                 |
+| `RABBITMQ_ROUTING_KEY`     | no       | `user.settings.updated` | Binding key.                                                                                                                                                               |
+| `RABBITMQ_QUEUE`           | no       | `meet.user_settings`    | Consumer queue name.                                                                                                                                                       |
+| `RABBITMQ_PREFETCH`        | no       | `1`                     | QoS prefetch. Keep at 1 to preserve ordering.                                                                                                                              |
+| `RABBITMQ_MAX_RETRIES`     | no       | `20`                    | Handler attempts before the message is sent to the DLQ.                                                                                                                    |
+| `RABBITMQ_RETRY_DELAY`     | no       | `1000`                  | First delay between handler attempts, in ms. It doubles on each attempt.                                                                                                   |
+| `RABBITMQ_MAX_RETRY_DELAY` | no       | `60000`                 | Cap on the delay between handler attempts, in ms.                                                                                                                          |
+| `DATABASE_URL`             | yes      | —                       | PostgreSQL DSN for the Meet database.                                                                                                                                      |
+| `MEET_USER_TABLE`          | no       | `meet_user`             | User table override, in case Django renames it.                                                                                                                            |
+| `LANGUAGE_MAP_OVERRIDES`   | no       | `{}`                    | JSON map of additional ISO-639-1 → Django language codes. Example: `{"es":"fr-fr"}`.                                                                                       |
+| `LOG_LEVEL`                | no       | `info`                  | pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`.                                                                                                            |
+| `HEALTH_PORT`              | no       | `8080`                  | Port for `/healthz`, `/readyz`, `/metrics`.                                                                                                                                |
+| `SHUTDOWN_TIMEOUT_MS`      | no       | `10000`                 | Grace period on SIGTERM. The broker client uses the same value as its `closeTimeout`, so this is how long we'll wait for in-flight handlers to finish before forcing exit. |
 
 The entitlement consumers are off unless `ENTITLEMENTS_ENABLED=true` (only `true` and `false` are accepted). When on, three more are required, and the service refuses to start without them:
 

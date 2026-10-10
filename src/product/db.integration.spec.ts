@@ -54,6 +54,22 @@ describe('createDbClient (integration)', () => {
     expect(after[0]).toEqual({ language: 'fr-fr', timezone: 'Europe/Paris' });
   });
 
+  it('times out an update stuck behind a lock', async () => {
+    await sql`INSERT INTO meet_user (email) VALUES (${'erin@example.com'})`;
+    const lock = sql.reserve();
+    const holder = await lock;
+    await holder`BEGIN`;
+    await holder`SELECT 1 FROM meet_user FOR UPDATE`;
+    try {
+      await expect(
+        client.updateUserSettings('erin@example.com', { language: 'fr-fr' }),
+      ).rejects.toMatchObject({ name: 'PostgresError', code: '57014' });
+    } finally {
+      await holder`ROLLBACK`;
+      holder.release();
+    }
+  }, 15_000);
+
   it('returns 0 when no user matches', async () => {
     const rows = await client.updateUserSettings('nobody@example.com', { language: 'fr-fr' });
     expect(rows).toBe(0);

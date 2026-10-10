@@ -1,3 +1,4 @@
+import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
 import type { Logger } from '../../infra/logger.js';
 import { hashEmail } from '../../infra/logger.js';
 import type { Metrics, Outcome } from '../../infra/metrics.js';
@@ -5,9 +6,7 @@ import type { DbClient, UserSettingsUpdate } from '../../product/port.js';
 import type { LanguageMapper } from './language.js';
 import { messageEnvelopeSchema } from './schema.js';
 
-export type HandlerResult =
-  | { status: 'ok'; outcome: Exclude<Outcome, 'db_error'> }
-  | { status: 'transient_error'; error: Error };
+type Applied = Exclude<Outcome, 'invalid_payload' | 'db_error' | 'rejected'>;
 
 export interface HandlerDeps {
   db: DbClient;
@@ -16,40 +15,31 @@ export interface HandlerDeps {
   metrics: Metrics;
 }
 
-const isTransientError = (err: unknown): boolean => {
+// Permanent: SQLSTATE class 22 (data exception), 23 (integrity constraint) and
+// 42 (undefined column, missing grant). Anything else, a failover or a timeout
+// included, is retried. A driver error may come wrapped in its cause.
+const isPermanentError = (err: unknown): boolean => {
   if (!(err instanceof Error)) return false;
-  const code = (err as { code?: string }).code;
-  // Postgres class 08 = connection exceptions, 53 = insufficient resources,
-  // 57 = operator intervention, 40 = transaction rollback/serialization
-  if (typeof code === 'string') {
-    if (code.startsWith('08') || code.startsWith('53') || code.startsWith('57')) return true;
-    if (code === '40001' || code === '40P01') return true;
-  }
-  if (
-    err.message.includes('ECONNREFUSED') ||
-    err.message.includes('ETIMEDOUT') ||
-    err.message.includes('ECONNRESET')
-  ) {
-    return true;
-  }
-  return false;
+  const { code } = err as { code?: unknown };
+  if (err.name === 'PostgresError' && typeof code === 'string') return /^(22|23|42)/.test(code);
+  return isPermanentError(err.cause);
 };
 
 export const handleMessage = async (
   rawMessage: unknown,
   { db, mapLanguage, logger, metrics }: HandlerDeps,
-): Promise<HandlerResult> => {
+): Promise<Applied> => {
   const startedAt = Date.now();
-  const finish = (outcome: Exclude<Outcome, 'db_error' | 'unexpected_error'>): HandlerResult => {
+  const finish = <O extends Outcome>(outcome: O): O => {
     metrics.observe(outcome, Date.now() - startedAt);
-    return { status: 'ok', outcome };
+    return outcome;
   };
 
   const parsed = messageEnvelopeSchema.safeParse(rawMessage);
   if (!parsed.success) {
     logger.error({ issues: parsed.error.issues }, 'invalid message envelope');
-    metrics.observe('invalid_payload', Date.now() - startedAt);
-    return { status: 'ok', outcome: 'invalid_payload' };
+    finish('invalid_payload');
+    throw new MalformedEventError('invalid settings message');
   }
 
   const envelope = parsed.data;
@@ -90,8 +80,7 @@ export const handleMessage = async (
     const latencyMs = Date.now() - startedAt;
     if (rowCount === 0) {
       logger.info({ requestId, version, emailHash, latencyMs }, 'no Meet user matched; skipping');
-      metrics.observe('unknown_user', latencyMs);
-      return { status: 'ok', outcome: 'unknown_user' };
+      return finish('unknown_user');
     }
     logger.info(
       {
@@ -105,25 +94,24 @@ export const handleMessage = async (
       },
       'user settings updated',
     );
-    metrics.observe('updated', latencyMs);
-    return { status: 'ok', outcome: 'updated' };
+    return finish('updated');
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     metrics.dbErrors.inc();
     const errCode = (error as { code?: string }).code;
-    if (isTransientError(error)) {
-      logger.warn(
+    if (isPermanentError(error)) {
+      logger.error(
         { requestId, version, emailHash, err: { message: error.message, code: errCode } },
-        'transient database error; throwing so the broker client retries with backoff (DLQ after max retries)',
+        'permanent database error; dead lettering',
       );
-      metrics.observe('db_error', Date.now() - startedAt);
-      return { status: 'transient_error', error };
+      finish('rejected');
+      throw new RejectedEventError(error.message, { cause: error });
     }
-    logger.error(
+    logger.warn(
       { requestId, version, emailHash, err: { message: error.message, code: errCode } },
-      'permanent database error; acking to avoid poison-message loop',
+      'transient database error; retrying',
     );
-    metrics.observe('unexpected_error', Date.now() - startedAt);
-    return { status: 'ok', outcome: 'unexpected_error' };
+    finish('db_error');
+    throw error;
   }
 };
