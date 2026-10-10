@@ -2,17 +2,7 @@ import { ilike, sql } from 'drizzle-orm';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { buildMeetUserTable, type MeetUserTable } from './meet-user.js';
-
-export interface UserSettingsUpdate {
-  language?: string;
-  timezone?: string;
-}
-
-export interface DbClient {
-  updateUserSettings(email: string, updates: UserSettingsUpdate): Promise<number>;
-  ping(): Promise<void>;
-  close(): Promise<void>;
-}
+import type { DbClient, UserSettingsUpdate } from './port.js';
 
 export interface DbOptions {
   databaseUrl: string;

@@ -2,7 +2,7 @@ import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import { z } from 'zod';
 import { hashEmail, type Logger } from '../../infra/logger.js';
 import type { Metrics } from '../../infra/metrics.js';
-import type { LintoClient } from '../../product/api.js';
+import type { LintoClient } from '../../product/port.js';
 import {
   domainOrganizationDeletedSchema,
   domainSubscriptionChangedSchema,
