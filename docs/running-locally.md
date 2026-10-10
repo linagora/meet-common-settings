@@ -7,7 +7,7 @@ The full Meet stack is not required. We reproduce just the `meet_user` table fro
 ## Prerequisites
 
 - Docker (the compose plugin works fine — Docker 20.10+).
-- Node.js 20+.
+- Node.js 24+.
 - `psql` is handy but not required (you can `docker exec` into the container).
 
 ## Set up the dependency stack
