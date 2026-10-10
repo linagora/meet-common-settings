@@ -13,6 +13,8 @@
     "dev": "tsx watch --import ./src/instrument.ts src/main.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.spec.ts'",
     "test:integration": "vitest run .integration.spec.ts",

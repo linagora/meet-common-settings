@@ -4,10 +4,10 @@ on:
   workflow_call:
 
 jobs:
-  lint:
-    name: Lint
+  check:
+    name: Check
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -17,52 +17,32 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
-      - run: npm run lint
+      - run: npm audit
+      - run: npm run check
 
-  typecheck:
-    name: Type Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-
-      - run: npm ci
-      - run: npm run typecheck
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-
-      - run: npm ci
-      - run: npm test
-
-  build:
-    name: Build
+  image:
+    name: Image smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
+      - run: docker build -t meet-side-service:ci .
 
-      - run: npm ci
-      - run: npm run build
+      # No broker: the probes and metrics answer while the consumer waits for it.
+      - name: Start the image
+        run: |
+          docker run -d --name mss -p 8080:8080 -p 9464:9464 \
+            -e RABBITMQ_URL=amqp://127.0.0.1:1 \
+            -e DATABASE_URL=postgres://ci@127.0.0.1:1/ci \
+            meet-side-service:ci
 
-      - name: Verify build output
-        run: test -f dist/main.js || (echo "dist/main.js not found" && exit 1)
+      - name: Probe it
+        run: |
+          curl -fs --retry 30 --retry-connrefused --retry-delay 1 localhost:8080/health/live
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/health/ready)" = 503
+          curl -fs localhost:9464/metrics | grep -q '^# TYPE mss_events_total counter'
+          test "$(docker exec mss id -u)" != 0
+
+      - if: failure()
+        run: docker logs mss
