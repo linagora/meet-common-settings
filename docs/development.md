@@ -27,6 +27,8 @@ src/
     metrics.ts    prom-client registry and counters
     logger.ts     pino instance plus email hashing helper
   product/
+    port.ts       The interfaces the handlers depend on
+    fake.ts       In-memory Meet database and LinTO for unit tests
     api.ts        LinTO Studio entitlements API client
     db.ts         Drizzle ORM (postgres-js) wrapper around the single UPDATE
     meet-user.ts  Drizzle table definition, the subset of Meet's meet_user we touch
@@ -40,7 +42,7 @@ src/
       schema.ts   Zod schemas for the entitlement events
 ```
 
-Tests sit next to the code they cover. `*.integration.spec.ts` files spin up Postgres with testcontainers to check the SQL; every other `*.spec.ts` file is a fast unit test with no docker.
+Tests sit next to the code they cover. `*.integration.spec.ts` files spin up Postgres with testcontainers to check the SQL; every other `*.spec.ts` file is a fast unit test with no docker, and the handler tests run against the fakes in `product/fake.ts`.
 
 Every file has one job and the call graph is shallow. If you find yourself adding a sixth or seventh kind of dependency, the abstraction is probably wrong.
 

@@ -1,14 +1,4 @@
-export interface EntitlementBody {
-  features: Record<string, unknown>;
-  updatedAt: string;
-  subject?: string;
-}
-
-export interface LintoClient {
-  putUser(email: string, body: EntitlementBody): Promise<{ ignored: boolean }>;
-  deleteUser(email: string): Promise<void>;
-  putDomain(domain: string, body: EntitlementBody): Promise<{ ignored: boolean }>;
-}
+import type { EntitlementBody, LintoClient } from './port.js';
 
 export interface LintoOptions {
   baseUrl: string;

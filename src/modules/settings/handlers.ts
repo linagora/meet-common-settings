@@ -1,7 +1,7 @@
 import type { Logger } from '../../infra/logger.js';
 import { hashEmail } from '../../infra/logger.js';
 import type { Metrics, Outcome } from '../../infra/metrics.js';
-import type { DbClient, UserSettingsUpdate } from '../../product/db.js';
+import type { DbClient, UserSettingsUpdate } from '../../product/port.js';
 import type { LanguageMapper } from './language.js';
 import { messageEnvelopeSchema } from './schema.js';
 
