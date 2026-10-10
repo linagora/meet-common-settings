@@ -19,9 +19,9 @@ GRANT SELECT (email, updated_at), UPDATE (language, timezone, updated_at) ON mee
 
 The user in `RABBITMQ_URL` needs:
 
-- `configure` and `read` on the `settings`, `billing`, `b2b` and `auth` exchanges and their dead-letter twins `settings.dlx`, `billing.dlx`, `b2b.dlx` and `auth.dlx`. The service declares all of them on startup and binds its queues to them.
-- `configure`, `write` and `read` on the `meet.user_settings` queue, the five entitlement queues (`meet.subscription.changed`, `meet.domain.subscription.changed`, `meet.domain.user.deleted`, `meet.user.deleted`, `meet.domain.organization.deleted`) and their `.dlq` twins, which the service also declares on startup.
-- The five entitlement queues and their exchanges are only declared when `ENTITLEMENTS_ENABLED=true`. A missing permission there fails the startup of the whole service, settings sync included, so grant them before switching it on.
+- `read` on the `settings` exchange, and on `billing`, `b2b` and `auth` when `ENTITLEMENTS_ENABLED=true`. The service checks they exist and binds its queue to them, but never declares them: a missing exchange fails the startup.
+- `configure`, `write` and `read` on the `meet-side-service` queue, its `meet-side-service.dlq` twin and the `meet-side-service.dlx` exchange, which the service declares on startup.
+- `configure` and `read` on the legacy queues (`meet.user_settings`, `meet.subscription.changed`, `meet.domain.subscription.changed`, `meet.domain.user.deleted`, `meet.user.deleted`, `meet.domain.organization.deleted`), and `write` on the `settings.dlx`, `billing.dlx`, `b2b.dlx` and `auth.dlx` exchanges they dead letter to, until the service has drained and deleted them. See [upgrading from one queue per event](#upgrading-from-one-queue-per-event).
 
 ## What to monitor
 
@@ -40,16 +40,17 @@ The service exposes these on `/metrics`:
 - `mss_message_latency_seconds{outcome}` — histogram of per-message wall time including the database call.
 - `mss_db_errors_total` — counter, increments on any database exception (transient or permanent).
 - `mss_entitlement_calls_total{event,outcome}`: counter, one increment per handler attempt. `outcome` is `applied`, `ignored` (LinTO already holds newer state), `invalid` (dropped), `rejected` (LinTO answered a `4xx` other than `408` or `429`, dead lettered at once) or `failed`. A failed call is retried up to `RABBITMQ_MAX_RETRIES` times, each attempt counted, then dead lettered, so one message can add that many.
+- `mss_unrouted_total`: counter, messages with no handler for their exchange and routing key, dead lettered.
 - Plus the default Node.js process metrics (heap, event loop lag, GC).
 
 Suggested alerts:
 
-| Alert                   | Condition                                                                                 | What it tells you                                                                               |
-| ----------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Service unreachable     | `up{job="meet-side-service"} == 0 for 5m`                                                 | The process is down or Prometheus can't scrape.                                                 |
-| Permanent errors rising | `rate(mss_messages_processed_total{outcome="rejected"}[5m]) > 0`                          | Likely a schema drift (a column was renamed or dropped). Investigate immediately.               |
-| Queue is backing up     | A `rabbitmq_queue_messages{queue="meet.user_settings"}` alert > N for X minutes           | Either the consumer is slow or `/readyz` is down. Check the readiness probe reason.             |
-| DLQ growing             | `rate(rabbitmq_queue_messages_published_total{queue=~"meet.user_settings.dlq"}[15m]) > 0` | Messages are exhausting their retries. Means a sustained DB outage or a poison-message pattern. |
+| Alert                   | Condition                                                                               | What it tells you                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Service unreachable     | `up{job="meet-side-service"} == 0 for 5m`                                               | The process is down or Prometheus can't scrape.                                                 |
+| Permanent errors rising | `rate(mss_messages_processed_total{outcome="rejected"}[5m]) > 0`                        | Likely a schema drift (a column was renamed or dropped). Investigate immediately.               |
+| Queue is backing up     | A `rabbitmq_queue_messages{queue="meet-side-service"}` alert > N for X minutes          | Either the consumer is slow or `/readyz` is down. Check the readiness probe reason.             |
+| DLQ growing             | `rate(rabbitmq_queue_messages_published_total{queue="meet-side-service.dlq"}[15m]) > 0` | Messages are exhausting their retries. Means a sustained DB outage or a poison-message pattern. |
 
 ### Logs
 
@@ -72,7 +73,7 @@ In order of likelihood:
 1. **Browser cache.** Meet's frontend caches language. Reload.
 2. **The user has not logged into Meet yet.** Without a `meet_user` row, the UPDATE matches zero rows. Log line: `"no Meet user matched; skipping"`. The user's settings will apply on first login.
 3. **The language code in common-settings is one we don't map.** Look for `"language code has no Django mapping; skipping language update"`. Meet currently only supports `en-us`, `fr-fr`, `nl-nl`, `de-de`, `ru-ru`, `vi-vn`. To add another, override `LANGUAGE_MAP_OVERRIDES` (see [configuration](#configuration)) or add it to `src/modules/settings/language.ts`.
-4. **The service is not consuming.** Check `/readyz` and the broker UI's consumer count for `meet.user_settings`.
+4. **The service is not consuming.** Check `/readyz` and the broker UI's consumer count for `meet-side-service`.
 
 ### Postgres is down
 
@@ -103,22 +104,19 @@ If the outage is permanent (broker decommissioned, URL changed), update `RABBITM
 
 All configuration is via environment variables. Defaults are listed in [`.env.example`](../.env.example).
 
-| Variable                   | Required | Default                 | What it does                                                                                                                                                               |
-| -------------------------- | -------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RABBITMQ_URL`             | yes      | —                       | AMQP DSN.                                                                                                                                                                  |
-| `RABBITMQ_EXCHANGE`        | no       | `settings`              | Topic exchange to bind to.                                                                                                                                                 |
-| `RABBITMQ_ROUTING_KEY`     | no       | `user.settings.updated` | Binding key.                                                                                                                                                               |
-| `RABBITMQ_QUEUE`           | no       | `meet.user_settings`    | Consumer queue name.                                                                                                                                                       |
-| `RABBITMQ_PREFETCH`        | no       | `1`                     | QoS prefetch of the settings queue. The entitlement queues handle one message at a time whatever it is.                                                                    |
-| `RABBITMQ_MAX_RETRIES`     | no       | `20`                    | Handler attempts before the message is sent to the DLQ.                                                                                                                    |
-| `RABBITMQ_RETRY_DELAY`     | no       | `1000`                  | First delay between handler attempts, in ms. It doubles on each attempt.                                                                                                   |
-| `RABBITMQ_MAX_RETRY_DELAY` | no       | `60000`                 | Cap on the delay between handler attempts, in ms.                                                                                                                          |
-| `DATABASE_URL`             | yes      | —                       | PostgreSQL DSN for the Meet database.                                                                                                                                      |
-| `MEET_USER_TABLE`          | no       | `meet_user`             | User table override, in case Django renames it.                                                                                                                            |
-| `LANGUAGE_MAP_OVERRIDES`   | no       | `{}`                    | JSON map of additional ISO-639-1 → Django language codes. Example: `{"es":"fr-fr"}`.                                                                                       |
-| `LOG_LEVEL`                | no       | `info`                  | pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`.                                                                                                            |
-| `HEALTH_PORT`              | no       | `8080`                  | Port for `/healthz`, `/readyz`, `/metrics`.                                                                                                                                |
-| `SHUTDOWN_TIMEOUT_MS`      | no       | `10000`                 | Grace period on SIGTERM. The broker client uses the same value as its `closeTimeout`, so this is how long we'll wait for in-flight handlers to finish before forcing exit. |
+| Variable                   | Required | Default     | What it does                                                                                                                                                               |
+| -------------------------- | -------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RABBITMQ_URL`             | yes      | —           | AMQP DSN.                                                                                                                                                                  |
+| `RABBITMQ_PREFETCH`        | no       | `1`         | QoS prefetch of the queue. With entitlements on, messages are still handled one at a time whatever it is.                                                                  |
+| `RABBITMQ_MAX_RETRIES`     | no       | `20`        | Handler attempts before the message is sent to the DLQ.                                                                                                                    |
+| `RABBITMQ_RETRY_DELAY`     | no       | `1000`      | First delay between handler attempts, in ms. It doubles on each attempt.                                                                                                   |
+| `RABBITMQ_MAX_RETRY_DELAY` | no       | `60000`     | Cap on the delay between handler attempts, in ms.                                                                                                                          |
+| `DATABASE_URL`             | yes      | —           | PostgreSQL DSN for the Meet database.                                                                                                                                      |
+| `MEET_USER_TABLE`          | no       | `meet_user` | User table override, in case Django renames it.                                                                                                                            |
+| `LANGUAGE_MAP_OVERRIDES`   | no       | `{}`        | JSON map of additional ISO-639-1 → Django language codes. Example: `{"es":"fr-fr"}`.                                                                                       |
+| `LOG_LEVEL`                | no       | `info`      | pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`.                                                                                                            |
+| `HEALTH_PORT`              | no       | `8080`      | Port for `/healthz`, `/readyz`, `/metrics`.                                                                                                                                |
+| `SHUTDOWN_TIMEOUT_MS`      | no       | `10000`     | Grace period on SIGTERM. The broker client uses the same value as its `closeTimeout`, so this is how long we'll wait for in-flight handlers to finish before forcing exit. |
 
 The entitlement consumers are off unless `ENTITLEMENTS_ENABLED=true` (only `true` and `false` are accepted). When on, three more are required, and the service refuses to start without them:
 
@@ -128,9 +126,19 @@ The entitlement consumers are off unless `ENTITLEMENTS_ENABLED=true` (only `true
 
 ## Turning entitlements on or off
 
-- While off, the five entitlement queues are neither declared nor consumed, so plan changes and deletions in that window never reach LinTO. Turning it on does not catch up: nothing re-emits current plans, so existing subscribers only get an entitlement on their next plan change.
-- Once turned on, the queues exist on the broker. Turning it off again leaves them bound and filling with no consumer. That is fine for a pause, since the backlog is applied on the next start. To retire the feature, delete the five `meet.*` entitlement queues listed under [RabbitMQ permissions](#rabbitmq-permissions).
+- While off, the entitlement events are not bound to the queue, so plan changes and deletions in that window never reach LinTO. Turning it on does not catch up: nothing re-emits current plans, so existing subscribers only get an entitlement on their next plan change.
+- Turning it off again leaves the five entitlement bindings in place, since the service never removes a binding. Events that arrive through them are dead lettered to `meet-side-service.dlq`, to replay once it is back on. To retire the feature, remove the five bindings from the `meet-side-service` queue.
 
 ## Restarts and single-consumer invariant
 
-Settings messages are guarded by their event time and can be handled in any order. The entitlement queues still rely on at most one consumer each, since a LinTO `DELETE` carries no `updatedAt`: do not scale to multiple replicas while entitlements are on, and stop the old process before starting a new one during upgrades. Brief downtime is harmless, as messages accumulate in the queue and drain when the new process is up.
+Settings messages are guarded by their event time and can be handled in any order. Entitlements still rely on at most one consumer, since a LinTO `DELETE` carries no `updatedAt`: do not scale to multiple replicas while entitlements are on, and stop the old process before starting a new one during upgrades. Brief downtime is harmless, as messages accumulate in the queue and drain when the new process is up.
+
+## Upgrading from one queue per event
+
+Releases before this one consumed from one queue per event. On its first start, this one creates `meet-side-service` with its bindings, then for each legacy queue it finds:
+
+- unbinds it, so new events only reach `meet-side-service`,
+- hands what it holds to the same handlers,
+- deletes it once empty.
+
+A message that fails there is put back and the queue kept, and the drain runs again every `RABBITMQ_MAX_RETRY_DELAY` ms. A queue another process still consumes, an old release during a rolling update for instance, is kept the same way. A message that is not JSON goes to the queue's `.dlq`. Nothing is lost while old and new run side by side, and an event that sits in both queues for a moment is applied twice, which is harmless. The drain runs alongside the new queue, so for the few seconds it takes, an entitlement event from before the upgrade can be applied after a newer one for the same user. The legacy `.dlq` queues are left alone: replay or delete them by hand.

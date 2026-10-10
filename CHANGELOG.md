@@ -6,6 +6,7 @@
 - `@linagora/rabbitmq-client` 0.7.1
 - A malformed message is dropped, a permanent error dead letters at once, and other failures are retried with a backoff doubling from `RABBITMQ_RETRY_DELAY` to `RABBITMQ_MAX_RETRY_DELAY` (60 s) over `RABBITMQ_MAX_RETRIES` (now 20) attempts
 - A settings change applies only when Meet's `updated_at` is older than the message `timestamp`. The database role needs `SELECT (email, updated_at)`: run `GRANT SELECT (updated_at) ON meet_user TO <role>` before upgrading
+- Every event comes through one `meet-side-service` queue, dead lettering to `meet-side-service.dlq`. The legacy `meet.*` queues are drained into it and deleted on startup, their `.dlq` twins left in place. `RABBITMQ_EXCHANGE`, `RABBITMQ_ROUTING_KEY` and `RABBITMQ_QUEUE` are gone, and the publishers' exchanges must exist before the service starts
 
 ## 0.2.0
 

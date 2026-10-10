@@ -17,10 +17,9 @@ const entitlementsEnv = {
 describe('loadConfig', () => {
   it('returns defaults for optional fields', () => {
     const cfg = loadConfig(baseEnv);
-    expect(cfg.RABBITMQ_EXCHANGE).toBe('settings');
-    expect(cfg.RABBITMQ_ROUTING_KEY).toBe('user.settings.updated');
-    expect(cfg.RABBITMQ_QUEUE).toBe('meet.user_settings');
     expect(cfg.RABBITMQ_PREFETCH).toBe(1);
+    expect(cfg.RABBITMQ_MAX_RETRIES).toBe(20);
+    expect(cfg.RABBITMQ_MAX_RETRY_DELAY).toBe(60_000);
     expect(cfg.MEET_USER_TABLE).toBe('meet_user');
     expect(cfg.LOG_LEVEL).toBe('info');
     expect(cfg.HEALTH_PORT).toBe(8080);

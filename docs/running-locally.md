@@ -97,6 +97,13 @@ docker exec meet-cs-e2e-postgres-1 \
 
 RabbitMQ management UI is at http://localhost:15673 (`guest` / `guest`).
 
+The service does not declare the `settings` exchange, which belongs to common-settings, and refuses to start without it. Declare it:
+
+```sh
+docker exec meet-cs-e2e-rabbitmq-1 \
+  rabbitmqadmin declare exchange name=settings type=topic durable=true
+```
+
 ## Run the service
 
 From the `meet-side-service` checkout:
@@ -113,7 +120,7 @@ You should see, within a second or two:
 
 ```
 "health server listening" port=8090
-"connecting to RabbitMQ" exchange=settings routingKey=user.settings.updated queue=meet.user_settings prefetch=1
+"connecting to RabbitMQ" queue=meet-side-service bindings=1 prefetch=1
 "Connected to server"
 "Confirm channel created"
 "Channel prefetch set" prefetch=1
