@@ -19,29 +19,28 @@ For a development RabbitMQ + Postgres, the easiest option is the docker-compose 
 
 ```
 src/
-  index.ts        Process entrypoint: load config, wire deps, run consumer + health server, handle SIGTERM
+  main.ts         Process entrypoint: load config, wire deps, run consumer + health server, handle SIGTERM
   config.ts       Env-var parsing with Zod
-  consumers/
-    index.ts      RabbitMQ subscriptions, ack/throw semantics
-    settings.ts   Per-message settings logic
-    entitlements.ts  Entitlement bindings and handler
-  clients/
+  infra/
+    consumer.ts   RabbitMQ subscriptions, ack/throw semantics
+    health.ts     HTTP server for /healthz, /readyz, /metrics
+    metrics.ts    prom-client registry and counters
+    logger.ts     pino instance plus email hashing helper
+  product/
+    api.ts        LinTO Studio entitlements API client
     db.ts         Drizzle ORM (postgres-js) wrapper around the single UPDATE
-    linto.ts      LinTO Studio entitlements API client
-  schemas/
-    settings.ts   Zod schema for the settings message envelope and payload
-    entitlements.ts  Zod schemas for the entitlement events
     meet-user.ts  Drizzle table definition, the subset of Meet's meet_user we touch
-  mapping/
-    language.ts   ISO 639-1 → Django LANGUAGES mapping
-  metrics.ts      prom-client registry and counters
-  logger.ts       pino instance plus email hashing helper
-  health.ts       HTTP server for /healthz, /readyz, /metrics
-
-tests/
-  unit/           Fast, no docker. Pure-function tests with mocked db and LinTO.
-  integration/    testcontainers spin up Postgres; verifies SQL behaviour.
+  modules/
+    settings/
+      handlers.ts Per-message settings logic
+      schema.ts   Zod schema for the settings message envelope and payload
+      language.ts ISO 639-1 → Django LANGUAGES mapping
+    entitlements/
+      handlers.ts Entitlement bindings and handler
+      schema.ts   Zod schemas for the entitlement events
 ```
+
+Tests sit next to the code they cover. `*.integration.spec.ts` files spin up Postgres with testcontainers to check the SQL; every other `*.spec.ts` file is a fast unit test with no docker.
 
 Every file has one job and the call graph is shallow. If you find yourself adding a sixth or seventh kind of dependency, the abstraction is probably wrong.
 
@@ -91,11 +90,11 @@ Updating the deployment to pick up the new image is handled separately by whiche
 
 The shortest path:
 
-1. Add the field to the Zod schema in `src/schemas/settings.ts`.
-2. Add the column to the drizzle table in `src/schemas/meet-user.ts` (type and constraints).
-3. Add the field to `UserSettingsUpdate` and to the dynamic SET builder in `src/clients/db.ts`.
-4. Extend `src/consumers/settings.ts` to copy the field from `payload` into `updates`, with any validation or mapping you need.
-5. Add tests in `tests/unit/consumers/settings.spec.ts` and `tests/integration/clients/db.spec.ts`.
+1. Add the field to the Zod schema in `src/modules/settings/schema.ts`.
+2. Add the column to the drizzle table in `src/product/meet-user.ts` (type and constraints).
+3. Add the field to `UserSettingsUpdate` and to the dynamic SET builder in `src/product/db.ts`.
+4. Extend `src/modules/settings/handlers.ts` to copy the field from `payload` into `updates`, with any validation or mapping you need.
+5. Add tests in `src/modules/settings/handlers.spec.ts` and `src/product/db.integration.spec.ts`.
 6. Update the architecture doc's "Which fields we sync" table.
 7. Add the column to the PostgreSQL grant in the [operations](operations.md#database-role) doc and in production.
 

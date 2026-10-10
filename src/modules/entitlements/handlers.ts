@@ -1,15 +1,15 @@
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import { z } from 'zod';
-import type { LintoClient } from '../clients/linto.js';
-import { hashEmail, type Logger } from '../logger.js';
-import type { Metrics } from '../metrics.js';
+import { hashEmail, type Logger } from '../../infra/logger.js';
+import type { Metrics } from '../../infra/metrics.js';
+import type { LintoClient } from '../../product/api.js';
 import {
   domainOrganizationDeletedSchema,
   domainSubscriptionChangedSchema,
   domainUserDeletedSchema,
   subscriptionChangedSchema,
   userDeletedSchema,
-} from '../schemas/entitlements.js';
+} from './schema.js';
 
 export interface EntitlementBinding<T = unknown> {
   exchange: string;

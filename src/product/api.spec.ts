@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createLintoClient, LintoError } from '../../../src/clients/linto.js';
+import { createLintoClient, LintoError } from './api.js';
 
 const linto = createLintoClient({
   baseUrl: 'https://studio.example.com/',
@@ -76,7 +76,8 @@ describe('createLintoClient', () => {
 
   it('truncates a long error body', async () => {
     stubFetch(new Response('x'.repeat(2_000), { status: 400 }));
-    const err = await linto.putUser('a@b.com', body).catch((e: LintoError) => e);
-    expect(err.body).toHaveLength(500);
+    const err = await linto.putUser('a@b.com', body).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LintoError);
+    expect((err as LintoError).body).toHaveLength(500);
   });
 });

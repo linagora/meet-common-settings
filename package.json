@@ -9,14 +9,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
-    "typecheck": "tsc --noEmit"
+    "test:unit": "vitest run --exclude '**/*.integration.spec.ts'",
+    "test:integration": "vitest run .integration.spec.ts",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "@linagora/rabbitmq-client": "^0.4.1",

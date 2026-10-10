@@ -1,9 +1,9 @@
 import { RabbitMQClient } from '@linagora/rabbitmq-client';
-import type { LintoClient } from '../clients/linto.js';
 import type { Config } from '../config.js';
-import type { Logger } from '../logger.js';
-import { entitlementBindings, handleEntitlement } from './entitlements.js';
-import { handleMessage, type HandlerDeps } from './settings.js';
+import { entitlementBindings, handleEntitlement } from '../modules/entitlements/handlers.js';
+import { handleMessage, type HandlerDeps } from '../modules/settings/handlers.js';
+import type { LintoClient } from '../product/api.js';
+import type { Logger } from './logger.js';
 
 export interface Consumer {
   start(): Promise<void>;

@@ -1,9 +1,9 @@
-import type { DbClient, UserSettingsUpdate } from '../clients/db.js';
-import type { Logger } from '../logger.js';
-import { hashEmail } from '../logger.js';
-import type { LanguageMapper } from '../mapping/language.js';
-import type { Metrics, Outcome } from '../metrics.js';
-import { messageEnvelopeSchema } from '../schemas/settings.js';
+import type { Logger } from '../../infra/logger.js';
+import { hashEmail } from '../../infra/logger.js';
+import type { Metrics, Outcome } from '../../infra/metrics.js';
+import type { DbClient, UserSettingsUpdate } from '../../product/db.js';
+import type { LanguageMapper } from './language.js';
+import { messageEnvelopeSchema } from './schema.js';
 
 export type HandlerResult =
   | { status: 'ok'; outcome: Exclude<Outcome, 'db_error'> }
@@ -40,9 +40,7 @@ export const handleMessage = async (
   { db, mapLanguage, logger, metrics }: HandlerDeps,
 ): Promise<HandlerResult> => {
   const startedAt = Date.now();
-  const finish = (
-    outcome: Exclude<Outcome, 'db_error' | 'unexpected_error'>,
-  ): HandlerResult => {
+  const finish = (outcome: Exclude<Outcome, 'db_error' | 'unexpected_error'>): HandlerResult => {
     metrics.observe(outcome, Date.now() - startedAt);
     return { status: 'ok', outcome };
   };
@@ -91,10 +89,7 @@ export const handleMessage = async (
     const rowCount = await db.updateUserSettings(payload.email, updates);
     const latencyMs = Date.now() - startedAt;
     if (rowCount === 0) {
-      logger.info(
-        { requestId, version, emailHash, latencyMs },
-        'no Meet user matched; skipping',
-      );
+      logger.info({ requestId, version, emailHash, latencyMs }, 'no Meet user matched; skipping');
       metrics.observe('unknown_user', latencyMs);
       return { status: 'ok', outcome: 'unknown_user' };
     }

@@ -1,11 +1,11 @@
-import { createDbClient } from './clients/db.js';
-import { createLintoClient } from './clients/linto.js';
 import { loadConfig } from './config.js';
-import { createConsumer } from './consumers/index.js';
-import { createHealthServer } from './health.js';
-import { logger } from './logger.js';
-import { buildLanguageMapper } from './mapping/language.js';
-import { createMetrics } from './metrics.js';
+import { createConsumer } from './infra/consumer.js';
+import { createHealthServer } from './infra/health.js';
+import { logger } from './infra/logger.js';
+import { createMetrics } from './infra/metrics.js';
+import { buildLanguageMapper } from './modules/settings/language.js';
+import { createLintoClient } from './product/api.js';
+import { createDbClient } from './product/db.js';
 
 const main = async (): Promise<void> => {
   const config = loadConfig();

@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import pino from 'pino';
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
-import { LintoError, type LintoClient } from '../../../src/clients/linto.js';
-import {
-  entitlementBindings,
-  handleEntitlement,
-  updatedAtOf,
-} from '../../../src/consumers/entitlements.js';
-import { createMetrics } from '../../../src/metrics.js';
+import { createMetrics } from '../../infra/metrics.js';
+import { LintoError, type LintoClient } from '../../product/api.js';
+import { entitlementBindings, handleEntitlement, updatedAtOf } from './handlers.js';
 
 const published = 1_758_448_800; // 2025-09-21T10:00:00Z
 const publishedIso = '2025-09-21T10:00:00.000Z';
@@ -177,9 +173,9 @@ describe('handleEntitlement', () => {
 
   it('rethrows a LinTO failure', async () => {
     const linto = makeLinto();
-    linto.deleteUser.mockRejectedValue(new LintoError(503));
+    linto.deleteUser.mockRejectedValue(new LintoError(503, ''));
     const { result, outcome } = await run('user.deleted', { internalEmail: 'a@b.com' }, linto);
-    await expect(result).rejects.toEqual(new LintoError(503));
+    await expect(result).rejects.toEqual(new LintoError(503, ''));
     expect(await outcome()).toBe('failed');
   });
 });

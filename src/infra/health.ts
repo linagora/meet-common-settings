@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
-import type { DbClient } from './clients/db.js';
-import type { Consumer } from './consumers/index.js';
+import type { DbClient } from '../product/db.js';
+import type { Consumer } from './consumer.js';
 import type { Logger } from './logger.js';
 import type { Metrics } from './metrics.js';
 
