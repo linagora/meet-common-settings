@@ -33,9 +33,6 @@ const languageOverridesSchema = z
 
 const envSchema = z.object({
   RABBITMQ_URL: z.string().min(1),
-  RABBITMQ_EXCHANGE: z.string().default('settings'),
-  RABBITMQ_ROUTING_KEY: z.string().default('user.settings.updated'),
-  RABBITMQ_QUEUE: z.string().default('meet.user_settings'),
   RABBITMQ_PREFETCH: positiveInt.default(1),
   RABBITMQ_MAX_RETRIES: positiveInt.default(20),
   RABBITMQ_RETRY_DELAY: positiveInt.default(1000),

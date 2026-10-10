@@ -16,6 +16,7 @@ export interface Metrics {
   messageLatency: Histogram<'outcome'>;
   dbErrors: Counter<string>;
   entitlementCalls: Counter<'event' | 'outcome'>;
+  unrouted: Counter<string>;
   observe(outcome: Outcome, latencyMs: number): void;
 }
 
@@ -51,12 +52,19 @@ export const createMetrics = (): Metrics => {
     registers: [registry],
   });
 
+  const unrouted = new Counter({
+    name: 'mss_unrouted_total',
+    help: 'Messages no handler is routed for, dead lettered',
+    registers: [registry],
+  });
+
   return {
     registry,
     messagesProcessed,
     messageLatency,
     dbErrors,
     entitlementCalls,
+    unrouted,
     observe(outcome, latencyMs) {
       messagesProcessed.labels(outcome).inc();
       messageLatency.labels(outcome).observe(latencyMs / 1000);

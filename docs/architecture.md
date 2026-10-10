@@ -87,9 +87,19 @@ The handler classifies every outcome into one of eight labels, all reported as `
 
 The "throw → retry → DLQ" path is provided by `@linagora/rabbitmq-client`: it catches the thrown error and retries up to `RABBITMQ_MAX_RETRIES` attempts, waiting `RABBITMQ_RETRY_DELAY` ms and doubling the wait up to `RABBITMQ_MAX_RETRY_DELAY` ms, then nacks to the dead-letter queue. A `RejectedEventError` skips the retries. The library also has reconnection logic for total broker outages.
 
+## One queue
+
+Every event reaches the service through one quorum queue, `meet-side-service`, bound to each routing key it handles. The handler is picked by the exchange and routing key the event was published with. A dead letter moved back into the queue arrives on the default exchange and keeps that origin in its `x-death` header, which the router reads. An event with no handler is logged, counted in `mss_unrouted_total` and dead lettered.
+
+The queue dead letters to its own exchange, `meet-side-service.dlx`, into `meet-side-service.dlq`, and caps broker redeliveries at 10. The exchanges it binds to belong to their publishers and are only checked, never declared.
+
+Events are handled one at a time while entitlements are on, so an outage of Postgres or LinTO holds back the events for the other one too, for as long as the retries last.
+
+Earlier releases used one queue per event (`meet.user_settings` and `meet.<routingKey>`). On startup the service unbinds each one it finds, hands what it holds to the same handlers, and deletes it once empty. See [operations](operations.md#upgrading-from-one-queue-per-event).
+
 ## Entitlements
 
-The same process keeps LinTO Studio's entitlements in step with Twake plans, so Meet can gate transcription and recording. Each event has its own queue and maps to exactly one Studio call. [ADR 061](https://github.com/linagora/twake-workplace-private/pull/1745) has the reasoning. It is off by default and switched on with `ENTITLEMENTS_ENABLED`; see [operations](operations.md#turning-entitlements-on-or-off).
+The same process keeps LinTO Studio's entitlements in step with Twake plans, so Meet can gate transcription and recording. Each event maps to exactly one Studio call. [ADR 061](https://github.com/linagora/twake-workplace-private/pull/1745) has the reasoning. It is off by default and switched on with `ENTITLEMENTS_ENABLED`; see [operations](operations.md#turning-entitlements-on-or-off).
 
 - `billing` / `subscription.changed`: `PUT /users/{internalEmail}` with the plan's `meet` block.
 - `billing` / `domain.subscription.changed`: `PUT /domains/{domain}` with the plan's `meet` block.
