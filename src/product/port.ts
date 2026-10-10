@@ -8,7 +8,6 @@ export type SettingsWrite = 'updated' | 'stale' | 'unknown_user';
 
 export interface DbClient {
   updateUserSettings(email: string, updates: UserSettingsUpdate, at: Date): Promise<SettingsWrite>;
-  ping(): Promise<void>;
   close(): Promise<void>;
 }
 

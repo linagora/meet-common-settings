@@ -16,5 +16,5 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/package.json ./
 USER node
-EXPOSE 8080
+EXPOSE 8080 9464
 CMD ["node", "dist/main.js"]

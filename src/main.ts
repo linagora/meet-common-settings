@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { createConsumer } from './infra/consumer.js';
-import { createHealthServer } from './infra/health.js';
+import { createOpsServers } from './infra/http.js';
 import { logger } from './infra/logger.js';
 import { createMetrics } from './infra/metrics.js';
 import { buildLanguageMapper } from './modules/settings/language.js';
@@ -26,10 +26,10 @@ const main = async (): Promise<void> => {
       })
     : undefined;
   const consumer = createConsumer({ config, db, mapLanguage, logger, metrics, linto });
-  const health = createHealthServer({
-    port: config.HEALTH_PORT,
+  const health = createOpsServers({
+    healthPort: config.HEALTH_PORT,
+    metricsPort: config.METRICS_PORT,
     consumer,
-    db,
     metrics,
     logger,
   });

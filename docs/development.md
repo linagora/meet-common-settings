@@ -19,11 +19,12 @@ For a development RabbitMQ + Postgres, the easiest option is the docker-compose 
 
 ```
 src/
-  main.ts         Process entrypoint: load config, wire deps, run consumer + health server, handle SIGTERM
+  main.ts         Process entrypoint: load config, wire deps, run consumer + ops servers, handle SIGTERM
   config.ts       Env-var parsing with Zod
   infra/
-    consumer.ts   RabbitMQ subscriptions, ack/throw semantics
-    health.ts     HTTP server for /healthz, /readyz, /metrics
+    consumer.ts   RabbitMQ subscription, legacy queue drain, readiness and liveness
+    liveness.ts   Stuck handler and lost connection detection
+    http.ts       Fastify servers for the probes and for /metrics
     metrics.ts    prom-client registry and counters
     logger.ts     pino instance plus email hashing helper
   product/
@@ -32,6 +33,11 @@ src/
     api.ts        LinTO Studio entitlements API client
     db.ts         Drizzle ORM (postgres-js) settings write, guarded by updated_at
     meet-user.ts  Drizzle table definition, the subset of Meet's meet_user we touch
+  events/
+    errors.ts     Malformed and rejected event errors
+    router.ts     Picks the handler by the exchange and routing key published to
+    topology.ts   The queue, its dead letter exchange, its bindings and routes
+    legacy.ts     Drains the per-event queues of earlier releases
   modules/
     settings/
       handlers.ts Per-message settings logic

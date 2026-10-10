@@ -47,9 +47,6 @@ export const createFakeDb = (users: Record<string, UserSettings> = {}) => {
       updatedAt.set(key, at);
       return 'updated';
     },
-    async ping() {
-      fail();
-    },
     async close() {},
   } satisfies DbClient & Record<string, unknown>;
 };

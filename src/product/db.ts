@@ -47,9 +47,6 @@ export const createDbClient = ({ databaseUrl, userTable, poolSize = 2 }: DbOptio
         return known.length > 0 ? 'stale' : 'unknown_user';
       });
     },
-    async ping() {
-      await db.execute(sql`SELECT 1`);
-    },
     async close() {
       await client.end();
     },
