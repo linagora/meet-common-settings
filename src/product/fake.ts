@@ -1,4 +1,10 @@
-import type { DbClient, EntitlementBody, LintoClient, UserSettingsUpdate } from './port.js';
+import type {
+  DbClient,
+  EntitlementBody,
+  LintoClient,
+  SettingsWrite,
+  UserSettingsUpdate,
+} from './port.js';
 
 interface UserSettings {
   language: string;
@@ -17,19 +23,29 @@ const failer = () => {
   };
 };
 
+// Meet keeps one updated_at per row, and the guard compares the event time with it.
 export const createFakeDb = (users: Record<string, UserSettings> = {}) => {
   const rows = new Map(Object.entries(users).map(([email, s]) => [email.toLowerCase(), { ...s }]));
+  const updatedAt = new Map<string, Date>();
   const { failWith, fail } = failer();
 
   return {
     users: rows,
+    updatedAt,
     failWith,
-    async updateUserSettings(email: string, updates: UserSettingsUpdate) {
+    async updateUserSettings(
+      email: string,
+      updates: UserSettingsUpdate,
+      at: Date,
+    ): Promise<SettingsWrite> {
       fail();
-      const row = rows.get(email.toLowerCase());
-      if (!row || (updates.language === undefined && updates.timezone === undefined)) return 0;
+      const key = email.toLowerCase();
+      const row = rows.get(key);
+      if (!row) return 'unknown_user';
+      if (at <= (updatedAt.get(key) ?? new Date(0))) return 'stale';
       Object.assign(row, updates);
-      return 1;
+      updatedAt.set(key, at);
+      return 'updated';
     },
     async ping() {
       fail();

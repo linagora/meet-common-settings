@@ -10,7 +10,7 @@ The PostgreSQL role embedded in `DATABASE_URL` should be granted only what the c
 CREATE ROLE meet_common_settings WITH LOGIN PASSWORD '...';
 GRANT CONNECT ON DATABASE meet TO meet_common_settings;
 GRANT USAGE ON SCHEMA public TO meet_common_settings;
-GRANT SELECT (email), UPDATE (language, timezone, updated_at) ON meet_user TO meet_common_settings;
+GRANT SELECT (email, updated_at), UPDATE (language, timezone, updated_at) ON meet_user TO meet_common_settings;
 ```
 
 `INSERT`, `DELETE`, and writes to any other table or column are not granted. If a future change to the service tries to write something else, Postgres will reject it rather than silently corrupting data.
@@ -85,7 +85,7 @@ Outages shorter than that cost a delay, not data. For longer outages, you have t
 
 ### A column was renamed in Meet
 
-You will see `mss_messages_processed_total{outcome="rejected"}` climb sharply, and every message logs `"permanent database error; dead lettering"` with Postgres error code `42703`. Each message goes to the DLQ without retries, so nothing is lost. Settings messages carry no ordering guard yet: a replayed message overwrites whatever a newer one set for the same user, so replay the window before newer changes pile up, or drop the messages of users who changed their settings since.
+You will see `mss_messages_processed_total{outcome="rejected"}` climb sharply, and every message logs `"permanent database error; dead lettering"` with Postgres error code `42703`. Each message goes to the DLQ without retries, so nothing is lost. Replay the DLQ once the fix is deployed: a replayed message older than a user's current settings is counted `stale` and changes nothing.
 
 Fix path:
 

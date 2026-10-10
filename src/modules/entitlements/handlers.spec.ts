@@ -207,3 +207,33 @@ describe('updatedAtOf', () => {
     expect(updatedAtOf({ headers: {} }, now)).toBe('2026-01-01T00:00:00.000Z');
   });
 });
+
+const permutations = <T>(items: T[]): T[][] =>
+  items.length <= 1
+    ? [items]
+    : items.flatMap((item, i) =>
+        permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [item, ...rest]),
+      );
+
+describe('handleEntitlement in any order', () => {
+  const plans = [{}, { recording: true }, meet, { transcription: { live: true } }].map(
+    (plan, i) => ({ plan, props: { ...properties, timestamp: published + i } }),
+  );
+
+  it.each(
+    permutations(plans).map((order) => [order.map((p) => p.props.timestamp! - published), order]),
+  )('ends on the latest plan, delivered in order %j', async (_, order) => {
+    const linto = createFakeLinto();
+    for (const { plan, props } of [...order, ...order]) {
+      const message = {
+        twakeId: 'jdoe',
+        internalEmail: 'jdoe@twake.app',
+        features: { meet: plan },
+      };
+      await run('subscription.changed', message, linto, props).result;
+    }
+    expect(linto.users.get('jdoe@twake.app')?.features).toEqual({
+      transcription: { live: true },
+    });
+  });
+});

@@ -76,25 +76,29 @@ export const handleMessage = async (
   const emailHash = hashEmail(payload.email);
 
   try {
-    const rowCount = await db.updateUserSettings(payload.email, updates);
+    const write = await db.updateUserSettings(payload.email, updates, new Date(envelope.timestamp));
     const latencyMs = Date.now() - startedAt;
-    if (rowCount === 0) {
+    if (write === 'unknown_user') {
       logger.info({ requestId, version, emailHash, latencyMs }, 'no Meet user matched; skipping');
-      return finish('unknown_user');
+    } else if (write === 'stale') {
+      logger.info(
+        { requestId, version, emailHash, latencyMs },
+        'Meet user changed since; skipping',
+      );
+    } else {
+      logger.info(
+        {
+          requestId,
+          version,
+          emailHash,
+          latencyMs,
+          languageUpdated: updates.language !== undefined,
+          timezoneUpdated: updates.timezone !== undefined,
+        },
+        'user settings updated',
+      );
     }
-    logger.info(
-      {
-        requestId,
-        version,
-        emailHash,
-        latencyMs,
-        rowCount,
-        languageUpdated: updates.language !== undefined,
-        timezoneUpdated: updates.timezone !== undefined,
-      },
-      'user settings updated',
-    );
-    return finish('updated');
+    return finish(write);
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     metrics.dbErrors.inc();

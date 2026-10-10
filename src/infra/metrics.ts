@@ -2,6 +2,7 @@ import { Counter, Histogram, Registry, collectDefaultMetrics } from 'prom-client
 
 export type Outcome =
   | 'updated'
+  | 'stale'
   | 'unknown_user'
   | 'no_email'
   | 'no_syncable_fields'

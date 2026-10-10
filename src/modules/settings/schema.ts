@@ -18,7 +18,8 @@ export const messageEnvelopeSchema = z.object({
   source: z.string().optional(),
   nickname: z.string().optional(),
   request_id: z.string().optional(),
-  timestamp: z.number().optional(),
+  // Publish time in ms, the event time the write to Meet is guarded by.
+  timestamp: z.number().int().positive(),
   version: z.number().optional(),
   payload: messagePayloadSchema,
 });
