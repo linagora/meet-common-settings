@@ -118,7 +118,7 @@ describe('createDbClient (integration)', () => {
     try {
       await expect(
         client.updateUserSettings('erin@example.com', { language: 'fr-fr' }, eventAt),
-      ).rejects.toMatchObject({ name: 'PostgresError', code: '57014' });
+      ).rejects.toMatchObject({ cause: { name: 'PostgresError', code: '57014' } });
     } finally {
       await holder`ROLLBACK`;
       holder.release();
