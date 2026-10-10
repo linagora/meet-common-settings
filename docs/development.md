@@ -66,17 +66,16 @@ When changing behavior:
 
 - Add a unit test for the new branch.
 - If the change touches the SQL, add an integration test that exercises it.
-- Run `npm test` locally before pushing. CI runs both.
+- Run `npm run check` locally before pushing.
 
-## Linting and types
+## Checks
 
 ```sh
-npm run lint        # eslint
+npm run check       # lint, format:check, typecheck, test, build
 npm run format      # prettier --write
-npm run typecheck   # tsc --noEmit
 ```
 
-The pre-merge gate is: typecheck clean, lint clean, unit tests pass. Integration tests run on every push but are not blocking by default (they need Docker in CI).
+CI runs `npm audit`, then `npm run check`, and builds the image and probes it. A push to `main` publishes the image only when both pass.
 
 ## Building the image
 
@@ -89,8 +88,8 @@ The Dockerfile is a two-stage build on `node:24-slim`. The runtime stage holds o
 ## Releasing
 
 1. Bump the version in `package.json` and add a line to `CHANGELOG.md`.
-2. Commit and tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. Push the image to the registry (CI handles this on tag push if configured).
+2. Commit and tag: `git tag vX.Y.Z && git push origin vX.Y.Z`. CI refuses a tag that does not match `package.json`.
+3. CI publishes `ghcr.io/linagora/meet-side-service:vX.Y.Z` and a GitHub release.
 
 Updating the deployment to pick up the new image is handled separately by whichever tool owns the deployment.
 
