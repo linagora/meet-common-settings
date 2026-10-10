@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import { loadConfig } from './config.js';
 import { createConsumer } from './infra/consumer.js';
 import { createOpsServers } from './infra/http.js';
@@ -7,6 +8,12 @@ import { buildLanguageMapper } from './modules/settings/language.js';
 import { createLintoClient } from './product/api.js';
 import { createDbClient } from './product/db.js';
 import type { LintoClient } from './product/port.js';
+
+// process.exit drops what Sentry has not sent yet.
+const exit = async (code: number): Promise<never> => {
+  await Sentry.close(2000);
+  process.exit(code);
+};
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
@@ -53,7 +60,7 @@ const main = async (): Promise<void> => {
   } catch (err) {
     logger.fatal({ err }, 'consumer failed to start');
     await health.stop();
-    process.exit(1);
+    await exit(1);
   }
 
   let shuttingDown = false;
@@ -73,10 +80,10 @@ const main = async (): Promise<void> => {
       await db.close();
       await health.stop();
       logger.info('shutdown complete');
-      process.exit(0);
+      await exit(0);
     } catch (err) {
       logger.error({ err }, 'error during shutdown');
-      process.exit(1);
+      await exit(1);
     }
   };
 
@@ -92,7 +99,7 @@ const main = async (): Promise<void> => {
   });
 };
 
-main().catch((err) => {
+main().catch(async (err) => {
   logger.fatal({ err }, 'fatal error during startup');
-  process.exit(1);
+  await exit(1);
 });

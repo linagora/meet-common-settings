@@ -58,6 +58,10 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   HEALTH_PORT: positiveInt.default(8080),
   METRICS_PORT: positiveInt.default(9464),
+
+  // Read by instrument.ts before this runs; listed so a bad value stops startup.
+  SENTRY_DSN: unsetWhenEmpty(z.string().url()),
+  SENTRY_ENVIRONMENT: unsetWhenEmpty(z.string().min(1)),
   SHUTDOWN_TIMEOUT_MS: positiveInt.default(10_000),
 });
 

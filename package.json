@@ -9,8 +9,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
-    "dev": "tsx watch src/main.ts",
+    "start": "node --import ./dist/instrument.js dist/main.js",
+    "dev": "tsx watch --import ./src/instrument.ts src/main.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@linagora/rabbitmq-client": "^0.7.1",
+    "@sentry/node": "^10.75.3",
     "amqplib": "^0.10.9",
     "drizzle-orm": "^0.40.1",
     "fastify": "^5.12.5",

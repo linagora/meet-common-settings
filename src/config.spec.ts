@@ -72,6 +72,11 @@ describe('loadConfig', () => {
     );
   });
 
+  it('rejects a SENTRY_DSN that is not a URL, and treats an empty one as unset', () => {
+    expect(() => loadConfig({ ...baseEnv, SENTRY_DSN: 'nope' })).toThrow(/SENTRY_DSN/);
+    expect(loadConfig({ ...baseEnv, SENTRY_DSN: '' }).SENTRY_DSN).toBeUndefined();
+  });
+
   it('rejects malformed LANGUAGE_MAP_OVERRIDES', () => {
     expect(() => loadConfig({ ...baseEnv, LANGUAGE_MAP_OVERRIDES: 'not-json' })).toThrow(
       /LANGUAGE_MAP_OVERRIDES/,
