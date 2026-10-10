@@ -40,7 +40,7 @@ src/
       schema.ts   Zod schemas for the entitlement events
 ```
 
-Tests sit next to the code they cover. `*.spec.ts` files are fast unit tests with no docker; `*.integration.spec.ts` files spin up Postgres with testcontainers to check the SQL.
+Tests sit next to the code they cover. `*.integration.spec.ts` files spin up Postgres with testcontainers to check the SQL; every other `*.spec.ts` file is a fast unit test with no docker.
 
 Every file has one job and the call graph is shallow. If you find yourself adding a sixth or seventh kind of dependency, the abstraction is probably wrong.
 

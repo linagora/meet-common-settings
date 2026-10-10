@@ -15,8 +15,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.spec.ts'",
-    "test:integration": "vitest run integration",
-    "typecheck": "tsc --noEmit"
+    "test:integration": "vitest run .integration.spec.ts",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "@linagora/rabbitmq-client": "^0.4.1",

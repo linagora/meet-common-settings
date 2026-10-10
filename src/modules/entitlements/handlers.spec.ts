@@ -173,9 +173,9 @@ describe('handleEntitlement', () => {
 
   it('rethrows a LinTO failure', async () => {
     const linto = makeLinto();
-    linto.deleteUser.mockRejectedValue(new LintoError(503));
+    linto.deleteUser.mockRejectedValue(new LintoError(503, ''));
     const { result, outcome } = await run('user.deleted', { internalEmail: 'a@b.com' }, linto);
-    await expect(result).rejects.toEqual(new LintoError(503));
+    await expect(result).rejects.toEqual(new LintoError(503, ''));
     expect(await outcome()).toBe('failed');
   });
 });
