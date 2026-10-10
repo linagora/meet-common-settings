@@ -19,7 +19,7 @@ Meet (the LiveKit-based video conferencing app) is one of those applications. It
 └────────────────────┘                    └────────────────────────┘           └────────────┘
 ```
 
-The service has exactly two outbound connections: RabbitMQ and PostgreSQL. It exposes an HTTP port on `/healthz`, `/readyz`, and `/metrics` for probes and metrics scrapers.
+The service has exactly two outbound connections: RabbitMQ and PostgreSQL. It serves its probes on one HTTP port and its Prometheus metrics on another.
 
 ## Why direct database UPDATEs
 

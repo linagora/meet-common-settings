@@ -8,6 +8,7 @@
 - A settings change applies only when Meet's `updated_at` is older than the message `timestamp`. The database role needs `SELECT (email, updated_at)`: run `GRANT SELECT (updated_at) ON meet_user TO <role>` before upgrading
 - Every event comes through one `meet-side-service` queue, dead lettering to `meet-side-service.dlq`. The legacy `meet.*` queues are drained into it and deleted on startup, their `.dlq` twins left in place. `RABBITMQ_EXCHANGE`, `RABBITMQ_ROUTING_KEY` and `RABBITMQ_QUEUE` are gone, and the publishers' exchanges must exist before the service starts
 - Node 24, and the image runs on `node:24-slim` as the `node` user (uid 1000) instead of distroless `nonroot` (uid 65532)
+- Probes at `/health/live` and `/health/ready`, and metrics on their own `METRICS_PORT` (9464). Ready no longer depends on the Meet database. Live fails when a handler hangs for 2 minutes, the broker stays unreachable for 10, or a reconnect loses the subscription. The service now waits for the broker at startup instead of exiting after 5 attempts. `/healthz`, `/readyz` and `/metrics` on `HEALTH_PORT` still answer until the chart moves
 
 ## 0.2.0
 

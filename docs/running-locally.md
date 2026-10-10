@@ -119,7 +119,7 @@ npm run dev
 You should see, within a second or two:
 
 ```
-"health server listening" port=8090
+"ops servers listening" healthPort=8090 metricsPort=9464
 "connecting to RabbitMQ" queue=meet-side-service bindings=1 prefetch=1
 "Connected to server"
 "Confirm channel created"
@@ -131,12 +131,12 @@ You should see, within a second or two:
 Probe the HTTP endpoints from another terminal:
 
 ```sh
-curl -s -o /dev/null -w "healthz: %{http_code}\n" http://localhost:8090/healthz
-curl -s -o /dev/null -w "readyz: %{http_code}\n"  http://localhost:8090/readyz
-curl -s http://localhost:8090/metrics | grep mss_
+curl -s -o /dev/null -w "live: %{http_code}\n"  http://localhost:8090/health/live
+curl -s -o /dev/null -w "ready: %{http_code}\n" http://localhost:8090/health/ready
+curl -s http://localhost:9464/metrics | grep mss_
 ```
 
-`/readyz` should be `200`; `/metrics` should show all the `mss_*` counters at zero.
+Both probes should be `200`; `/metrics` should show all the `mss_*` counters at zero.
 
 ## Publish a test message
 

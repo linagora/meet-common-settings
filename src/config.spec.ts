@@ -23,6 +23,7 @@ describe('loadConfig', () => {
     expect(cfg.MEET_USER_TABLE).toBe('meet_user');
     expect(cfg.LOG_LEVEL).toBe('info');
     expect(cfg.HEALTH_PORT).toBe(8080);
+    expect(cfg.METRICS_PORT).toBe(9464);
     expect(cfg.LANGUAGE_MAP_OVERRIDES).toEqual({});
   });
 

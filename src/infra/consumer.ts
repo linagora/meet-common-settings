@@ -14,13 +14,21 @@ import {
 } from '../events/topology.js';
 import type { HandlerDeps } from '../modules/settings/handlers.js';
 import type { LintoClient } from '../product/port.js';
+import { createLiveness } from './liveness.js';
 import type { Logger } from './logger.js';
 
 export interface Consumer {
   start(): Promise<void>;
   stop(): Promise<void>;
   isReady(): boolean;
+  isLive(): boolean;
 }
+
+// Far above one handler attempt, which the product timeouts bound to seconds.
+const STUCK_AFTER_MS = 120_000;
+// The client reconnects on its own every few seconds, so a restart only helps
+// when that has gone wrong.
+const DISCONNECTED_AFTER_MS = 600_000;
 
 export interface ConsumerDeps extends HandlerDeps {
   config: Config;
@@ -33,12 +41,21 @@ export interface ConsumerDeps extends HandlerDeps {
 export const createConsumer = (deps: ConsumerDeps): Consumer => {
   const { config, logger } = deps;
   let subscribed = false;
+  const liveness = createLiveness({
+    isConnected: () => client.isConnected(),
+    stuckAfterMs: STUCK_AFTER_MS,
+    disconnectedAfterMs: DISCONNECTED_AFTER_MS,
+  });
   const client = new RabbitMQClient({
     url: config.RABBITMQ_URL,
     maxRetries: config.RABBITMQ_MAX_RETRIES,
     retryDelay: config.RABBITMQ_RETRY_DELAY,
     prefetch: config.RABBITMQ_PREFETCH,
     closeTimeout: config.SHUTDOWN_TIMEOUT_MS,
+    // Waiting for the broker, rather than exiting, keeps a pod restarted during
+    // an outage from crash looping.
+    initMaxAttempts: Infinity,
+    hooks: { onReconnect: (info) => liveness.reconnected(info) },
     logger,
   });
   const abort = new AbortController();
@@ -72,10 +89,12 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
         'connecting to RabbitMQ',
       );
       await client.init();
-      const route = routeEvents(routes, (origin) => {
-        deps.metrics.unrouted.inc();
-        logger.warn(origin, 'no handler for this event; dead lettering');
-      });
+      const route = liveness.track(
+        routeEvents(routes, (origin) => {
+          deps.metrics.unrouted.inc();
+          logger.warn(origin, 'no handler for this event; dead lettering');
+        }),
+      );
       await client.subscribe(first!.exchange, first!.routingKey, QUEUE, dropMalformed(route), {
         bindings: more,
         // The exchanges belong to their publishers.
@@ -105,6 +124,11 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
     // this pod until the channel is back up.
     isReady() {
       return subscribed && client.isConnected();
+    },
+    // Restarting is the fix for a handler that hangs or a connection that does
+    // not come back.
+    isLive() {
+      return liveness.isLive();
     },
   };
 };
