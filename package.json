@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@linagora/rabbitmq-client": "^0.7.1",
+    "amqplib": "^0.10.9",
     "drizzle-orm": "^0.40.1",
     "pino": "^9.5.0",
     "postgres": "^3.4.9",
@@ -28,6 +29,8 @@
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.16.0",
+    "@testcontainers/rabbitmq": "^10.28.0",
+    "@types/amqplib": "^0.10.8",
     "@types/node": "^20.14.10",
     "@typescript-eslint/eslint-plugin": "^8.18.2",
     "@typescript-eslint/parser": "^8.18.2",
