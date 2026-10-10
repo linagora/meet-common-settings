@@ -8,7 +8,12 @@ import { entitlementBindings, handleEntitlement, updatedAtOf } from './handlers.
 
 const published = 1_758_448_800; // 2025-09-21T10:00:00Z
 const publishedIso = '2025-09-21T10:00:00.000Z';
-const properties: RabbitMQMessageProperties = { headers: {}, timestamp: published };
+const properties: RabbitMQMessageProperties = {
+  headers: {},
+  timestamp: published,
+  exchange: 'billing',
+  routingKey: 'subscription.changed',
+};
 
 const bindingFor = (routingKey: string) => {
   const binding = entitlementBindings.find((b) => b.routingKey === routingKey);

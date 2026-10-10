@@ -74,7 +74,7 @@ const xDeath = z.array(z.object({ time: z.object({ value: z.number() }) }).passt
 // the first death on a DLQ replay, else now. A replay must never send its own
 // time, or LinTO's order guard would let an old message overwrite a newer one.
 export const updatedAtOf = (
-  { timestamp, headers }: RabbitMQMessageProperties,
+  { timestamp, headers }: Pick<RabbitMQMessageProperties, 'timestamp' | 'headers'>,
   now = Date.now(),
 ): string => {
   const deaths = xDeath.safeParse(headers['x-death']);
