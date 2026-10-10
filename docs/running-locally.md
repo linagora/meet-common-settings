@@ -163,7 +163,7 @@ Run it: `node publish.mjs`.
 In the service log you should see something like:
 
 ```
-"user settings updated" requestId=local-... emailHash=ff8d... rowCount=1
+"user settings updated" requestId=local-... emailHash=ff8d...
                         languageUpdated=true timezoneUpdated=true latencyMs=4
 ```
 

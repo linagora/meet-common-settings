@@ -3,8 +3,11 @@ export interface UserSettingsUpdate {
   timezone?: string;
 }
 
+// `stale` when Meet's row changed after `at`, which then wins.
+export type SettingsWrite = 'updated' | 'stale' | 'unknown_user';
+
 export interface DbClient {
-  updateUserSettings(email: string, updates: UserSettingsUpdate): Promise<number>;
+  updateUserSettings(email: string, updates: UserSettingsUpdate, at: Date): Promise<SettingsWrite>;
   ping(): Promise<void>;
   close(): Promise<void>;
 }

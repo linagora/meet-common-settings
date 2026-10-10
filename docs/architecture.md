@@ -35,7 +35,7 @@ Option 3 would have coupled Meet's deployment to RabbitMQ, when today its Celery
 
 Option 1 keeps Meet completely untouched. The cost is that the sidecar has to know the table name and column names of Meet's user table. We mitigate that by:
 
-- Granting the sidecar's PostgreSQL role only `SELECT (email), UPDATE (language, timezone, updated_at)` on `meet_user`. The blast radius of a schema mistake is bounded.
+- Granting the sidecar's PostgreSQL role only `SELECT (email, updated_at), UPDATE (language, timezone, updated_at)` on `meet_user`. The blast radius of a schema mistake is bounded.
 - Making the table name configurable via `MEET_USER_TABLE` so a Django rename can be absorbed without a code change.
 - Validating the identifier against an allowlist regex before interpolating it into SQL.
 
@@ -43,7 +43,7 @@ Option 1 keeps Meet completely untouched. The cost is that the sidecar has to kn
 
 Common-settings identifies users by `nickname` (a username string). Meet identifies users by `sub` (their OIDC subject claim). There is no direct mapping between the two: `nickname` is not Meet's `sub`.
 
-The one identifier shared by both systems is **email**. Meet's prod deployment already has `OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION=True`, meaning Meet itself uses email as a fallback when sub doesn't resolve. We follow the same convention: `WHERE email ILIKE $3`.
+The one identifier shared by both systems is **email**. Meet's prod deployment already has `OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION=True`, meaning Meet itself uses email as a fallback when sub doesn't resolve. We follow the same convention and match the email case-insensitively.
 
 If a settings message arrives for a user who has never logged into Meet (and therefore has no row in `meet_user`), the UPDATE returns zero rows. We log an info-level event and ack the message. The user's settings will be applied automatically on their first OIDC sign-in, because Meet pulls language and timezone from OIDC userinfo claims at that point.
 
@@ -59,21 +59,25 @@ If a settings message arrives for a user who has never logged into Meet (and the
 
 ## Idempotency and ordering
 
-We do not track per-user state. The handler runs a single `UPDATE ... WHERE email ILIKE $1` and acks. Re-applying the same payload is a no-op (the values are the same). Applying an out-of-order older payload would temporarily revert settings until the next real update — but in practice this doesn't happen because:
+We do not track per-user state. Meet's own `updated_at` is the guard: the handler runs
 
-- The service is meant to run as **a single process**: never more than one consumer attached to the queue.
-- RabbitMQ's channel prefetch is set to **1**, so the broker dispatches one message at a time and waits for the ack before sending the next.
-- A single durable queue with a single consumer preserves message order.
+```sql
+UPDATE meet_user SET language = $1, timezone = $2, updated_at = $event_time
+WHERE lower(email) = lower($3) AND updated_at < $event_time
+```
 
-That gives us strict serial processing without any application-side state.
+The event time is the envelope's `timestamp`, which common-settings sets when it publishes. A redelivered or older event matches no row and is counted `stale`, and so is an event older than a change made in Meet itself, since Meet bumps `updated_at` on every save. A login does not bump it: Meet saves only the changed OIDC claims on login, without `updated_at`. A message without `timestamp` is malformed and dropped.
+
+Events can therefore be handled in any order and by several consumers at once.
 
 ## Failure modes and what they mean
 
-The handler classifies every outcome into one of seven labels, all reported as `mss_messages_processed_total{outcome=...}`:
+The handler classifies every outcome into one of eight labels, all reported as `mss_messages_processed_total{outcome=...}`:
 
 | Outcome              | What it means                                                               | Ack?                                             |
 | -------------------- | --------------------------------------------------------------------------- | ------------------------------------------------ |
 | `updated`            | Found the user, applied the change.                                         | Yes                                              |
+| `stale`              | The user's row changed after the event, which changes nothing.              | Yes                                              |
 | `unknown_user`       | No row matched the email. User probably hasn't logged into Meet yet.        | Yes                                              |
 | `no_email`           | Message had no email field. Can't match anyone.                             | Yes                                              |
 | `no_syncable_fields` | Message had no language or timezone (or only an unsupported language code). | Yes                                              |

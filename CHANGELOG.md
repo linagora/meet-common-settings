@@ -3,7 +3,9 @@
 ## Unreleased
 
 - Individual account deletions come from `auth` / `user.deleted` (queue `meet.user.deleted`), keyed by `internalEmail`, instead of `auth` / `user.deletion.requested`
-- `@linagora/rabbitmq-client` 0.4.1
+- `@linagora/rabbitmq-client` 0.7.1
+- A malformed message is dropped, a permanent error dead letters at once, and other failures are retried with a backoff doubling from `RABBITMQ_RETRY_DELAY` to `RABBITMQ_MAX_RETRY_DELAY` (60 s) over `RABBITMQ_MAX_RETRIES` (now 20) attempts
+- A settings change applies only when Meet's `updated_at` is older than the message `timestamp`. The database role needs `SELECT (email, updated_at)`: run `GRANT SELECT (updated_at) ON meet_user TO <role>` before upgrading
 
 ## 0.2.0
 
