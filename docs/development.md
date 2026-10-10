@@ -98,6 +98,10 @@ The shortest path:
 4. Extend `src/modules/settings/handlers.ts` to copy the field from `payload` into `updates`, with any validation or mapping you need.
 5. Add tests in `src/modules/settings/handlers.spec.ts` and `src/product/db.integration.spec.ts`.
 6. Update the architecture doc's "Which fields we sync" table.
-7. Add the column to the PostgreSQL grant in the [operations](operations.md#database-role) doc and in production.
+7. Add the column to the PostgreSQL grant in the [operations](operations.md#database-role) doc, in the role of `src/product/db.integration.spec.ts`, and in production.
 
 Don't ship a new field without granting it. The role is least-privilege by design, so the UPDATE will fail loudly rather than silently drop the column from the write.
+
+## Following a Meet upgrade
+
+`src/product/db.integration.spec.ts` runs against `src/product/meet_user.sql`, the table as the deployed Meet backend migrates it. When the deployed version changes, run that image's `python manage.py migrate` against an empty Postgres, then replace the file with `pg_dump --schema-only --no-owner --no-privileges -t meet_user`.

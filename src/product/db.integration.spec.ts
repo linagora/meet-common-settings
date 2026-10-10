@@ -1,21 +1,18 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { URL } from 'node:url';
 import postgres from 'postgres';
 import { createDbClient } from './db.js';
 import type { DbClient } from './port.js';
 
-const SCHEMA_SQL = `
-  CREATE EXTENSION IF NOT EXISTS pgcrypto;
-  CREATE TABLE meet_user (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT,
-    sub TEXT,
-    language VARCHAR(10) NOT NULL DEFAULT 'en-us',
-    timezone TEXT NOT NULL DEFAULT 'UTC',
-    full_name TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
+// The grants docs/operations.md asks for, so the test fails if the client needs more.
+const ROLE_SQL = `
+  CREATE ROLE meet_side_service WITH LOGIN PASSWORD 'secret';
+  GRANT USAGE ON SCHEMA public TO meet_side_service;
+  GRANT SELECT (email, updated_at), UPDATE (language, timezone, updated_at)
+    ON meet_user TO meet_side_service;
 `;
 
 const changedAt = new Date('2026-10-01T00:00:00Z');
@@ -26,19 +23,36 @@ describe('createDbClient (integration)', () => {
   let sql: ReturnType<typeof postgres>;
   let client: DbClient;
 
+  // Django sets these columns in Python, so the schema has no defaults for them.
   const insert = (email: string, updatedAt = changedAt) =>
-    sql`INSERT INTO meet_user (email, language, timezone, updated_at)
-        VALUES (${email}, ${'en-us'}, ${'UTC'}, ${updatedAt})`;
+    sql`INSERT INTO meet_user ${sql({
+      id: randomUUID(),
+      sub: randomUUID(),
+      email,
+      password: '',
+      is_superuser: false,
+      is_device: false,
+      is_staff: false,
+      is_active: true,
+      language: 'en-us',
+      timezone: 'UTC',
+      default_room_configuration: sql.json({}),
+      created_at: changedAt,
+      updated_at: updatedAt,
+    })}`;
   const rows = () =>
     sql<{ email: string; language: string; timezone: string; updated_at: Date }[]>`
       SELECT email, language, timezone, updated_at FROM meet_user ORDER BY email`;
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start();
-    const url = container.getConnectionUri();
-    sql = postgres(url);
-    await sql.unsafe(SCHEMA_SQL);
-    client = createDbClient({ databaseUrl: url, userTable: 'meet_user' });
+    sql = postgres(container.getConnectionUri());
+    await sql.unsafe(await readFile(new URL('meet_user.sql', import.meta.url), 'utf8'));
+    await sql.unsafe(ROLE_SQL);
+    const url = new URL(container.getConnectionUri());
+    url.username = 'meet_side_service';
+    url.password = 'secret';
+    client = createDbClient({ databaseUrl: url.href, userTable: 'meet_user' });
   }, 120_000);
 
   afterAll(async () => {
