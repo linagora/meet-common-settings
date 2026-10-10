@@ -1,21 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { createMetrics } from './metrics.js';
 
+const values = async (metrics: ReturnType<typeof createMetrics>, name: string) =>
+  (await metrics.registry.getSingleMetric(name)!.get()).values;
+
 describe('createMetrics', () => {
-  it('exposes the service metrics under the mss_ prefix', async () => {
+  it('counts events by origin and outcome', async () => {
     const metrics = createMetrics();
-    metrics.observe('updated', 12);
+    metrics.event({ exchange: 'auth', routingKey: 'user.deleted' }, 'handled');
 
-    const names = (await metrics.registry.getMetricsAsJSON()).map((m) => m.name);
+    expect(await values(metrics, 'mss_events_total')).toEqual([
+      { value: 1, labels: { exchange: 'auth', routing_key: 'user.deleted', outcome: 'handled' } },
+    ]);
+  });
 
-    expect(names).toEqual(
-      expect.arrayContaining([
-        'mss_messages_processed_total',
-        'mss_message_latency_seconds',
-        'mss_db_errors_total',
-        'mss_entitlement_calls_total',
-      ]),
+  it('times product calls by result', async () => {
+    const metrics = createMetrics();
+    const ok = metrics.timed('linto.put_user', async (n: number) => n + 1);
+    const failing = metrics.timed('linto.put_user', async () => {
+      throw new Error('down');
+    });
+
+    expect(await ok(1)).toBe(2);
+    await expect(failing()).rejects.toThrow('down');
+
+    const text = await metrics.registry.metrics();
+    expect(text).toContain(
+      'mss_product_call_duration_seconds_count{call="linto.put_user",result="ok"} 1',
     );
-    expect(names.some((n) => n.startsWith('mcs_'))).toBe(false);
+    expect(text).toContain(
+      'mss_product_call_duration_seconds_count{call="linto.put_user",result="error"} 1',
+    );
   });
 });

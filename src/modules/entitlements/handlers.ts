@@ -2,7 +2,6 @@ import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import { z } from 'zod';
 import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
 import { hashEmail, type Logger } from '../../infra/logger.js';
-import type { Metrics } from '../../infra/metrics.js';
 import type { LintoClient } from '../../product/port.js';
 import {
   domainOrganizationDeletedSchema,
@@ -90,20 +89,16 @@ export const updatedAtOf = (
 export interface EntitlementDeps {
   linto: LintoClient;
   logger: Logger;
-  metrics: Metrics;
 }
 
 export const handleEntitlement = async (
   { routingKey, schema, apply, subjectOf }: EntitlementBinding,
   message: unknown,
   properties: RabbitMQMessageProperties,
-  { linto, logger, metrics }: EntitlementDeps,
-): Promise<void> => {
-  const count = (outcome: string) => metrics.entitlementCalls.labels(routingKey, outcome).inc();
-
+  { linto, logger }: EntitlementDeps,
+): Promise<'applied' | 'stale'> => {
   const parsed = schema.safeParse(message);
   if (!parsed.success) {
-    count('invalid');
     logger.error({ routingKey, issues: parsed.error.issues }, 'invalid entitlement message');
     throw new MalformedEventError(`invalid ${routingKey} message`);
   }
@@ -113,14 +108,13 @@ export const handleEntitlement = async (
   try {
     const result = await apply(parsed.data, linto, updatedAt);
     const ignored = result?.ignored === true;
-    count(ignored ? 'ignored' : 'applied');
     logger.info(
       { routingKey, subjectHash, updatedAt, ignored },
       ignored ? 'entitlement older than LinTO state; ignored' : 'entitlement applied',
     );
+    return ignored ? 'stale' : 'applied';
   } catch (err) {
     const rejected = err instanceof RejectedEventError;
-    count(rejected ? 'rejected' : 'failed');
     logger.warn(
       { routingKey, subjectHash, err },
       rejected ? 'entitlement refused by LinTO; dead lettering' : 'entitlement call failed',

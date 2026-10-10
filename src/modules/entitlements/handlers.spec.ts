@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import pino from 'pino';
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
-import { createMetrics } from '../../infra/metrics.js';
 import { LintoError } from '../../product/api.js';
 import { createFakeLinto } from '../../product/fake.js';
 import { entitlementBindings, handleEntitlement, updatedAtOf } from './handlers.js';
@@ -28,12 +27,8 @@ const run = (
   linto = createFakeLinto(),
   props = properties,
 ) => {
-  const metrics = createMetrics();
-  const deps = { linto, metrics, logger: pino({ level: 'silent' }) };
-  const result = handleEntitlement(bindingFor(routingKey), message, props, deps);
-  const outcome = async () =>
-    (await metrics.entitlementCalls.get()).values.find((v) => v.value === 1)?.labels.outcome;
-  return { result, outcome };
+  const deps = { linto, logger: pino({ level: 'silent' }) };
+  return { result: handleEntitlement(bindingFor(routingKey), message, props, deps) };
 };
 
 const meet = { transcription: { live: true, async: true }, recording: true };
@@ -51,7 +46,7 @@ describe('entitlement bindings', () => {
 
   it('subscription.changed PUTs the user with only the meet block', async () => {
     const linto = createFakeLinto();
-    const { result, outcome } = run(
+    const { result } = run(
       'subscription.changed',
       {
         twakeId: 'jdoe',
@@ -61,13 +56,12 @@ describe('entitlement bindings', () => {
       },
       linto,
     );
-    await result;
+    expect(await result).toBe('applied');
     expect(linto.users.get('jdoe@twake.app')).toEqual({
       subject: 'jdoe',
       features: meet,
       updatedAt: publishedIso,
     });
-    expect(await outcome()).toBe('applied');
   });
 
   it('sends empty features when the plan carries no meet block', async () => {
@@ -147,41 +141,33 @@ describe('entitlement bindings', () => {
 });
 
 describe('handleEntitlement', () => {
-  it('counts an order-guard hit as ignored, not applied', async () => {
+  it('reports an order-guard hit as stale', async () => {
     const linto = createFakeLinto();
     await linto.putDomain('acme.com', { features: meet, updatedAt: '2026-01-01T00:00:00.000Z' });
-    const { result, outcome } = run('domain.organization.deleted', { domain: 'acme.com' }, linto);
-    await result;
-    expect(await outcome()).toBe('ignored');
+    const { result } = run('domain.organization.deleted', { domain: 'acme.com' }, linto);
+    expect(await result).toBe('stale');
     expect(linto.domains.get('acme.com')?.features).toEqual(meet);
   });
 
   it('throws a malformed event error on an invalid message', async () => {
     const linto = createFakeLinto();
-    const { result, outcome } = run(
-      'subscription.changed',
-      { internalEmail: 'not-an-email' },
-      linto,
-    );
+    const { result } = run('subscription.changed', { internalEmail: 'not-an-email' }, linto);
     await expect(result).rejects.toThrow(MalformedEventError);
     expect(linto.users.size).toBe(0);
-    expect(await outcome()).toBe('invalid');
   });
 
-  it('counts a call LinTO refuses for good as rejected', async () => {
+  it('rethrows a call LinTO refuses for good', async () => {
     const linto = createFakeLinto();
     linto.failWith(new RejectedEventError('LinTO Studio answered 400'));
-    const { result, outcome } = run('domain.organization.deleted', { domain: 'acme.com' }, linto);
+    const { result } = run('domain.organization.deleted', { domain: 'acme.com' }, linto);
     await expect(result).rejects.toBeInstanceOf(RejectedEventError);
-    expect(await outcome()).toBe('rejected');
   });
 
   it('rethrows a LinTO failure', async () => {
     const linto = createFakeLinto();
     linto.failWith(new LintoError(503, ''));
-    const { result, outcome } = run('user.deleted', { internalEmail: 'jdoe@twake.app' }, linto);
+    const { result } = run('user.deleted', { internalEmail: 'jdoe@twake.app' }, linto);
     await expect(result).rejects.toEqual(new LintoError(503, ''));
-    expect(await outcome()).toBe('failed');
   });
 });
 

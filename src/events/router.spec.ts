@@ -1,6 +1,6 @@
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import { describe, expect, it, vi } from 'vitest';
-import { RejectedEventError } from './errors.js';
+import { MalformedEventError, RejectedEventError } from './errors.js';
 import { routeEvents } from './router.js';
 
 const delivery = (
@@ -10,18 +10,20 @@ const delivery = (
 ): RabbitMQMessageProperties => ({ exchange, routingKey, headers });
 
 const setup = () => {
-  const settings = vi.fn().mockResolvedValue(undefined);
+  const settings = vi.fn().mockResolvedValue('updated');
   const deleted = vi.fn().mockResolvedValue(undefined);
-  const unrouted = vi.fn();
+  const outcome = vi.fn();
   const route = routeEvents(
     [
       { exchange: 'settings', routingKey: 'user.settings.updated', handle: settings },
       { exchange: 'auth', routingKey: 'user.deleted', handle: deleted },
     ],
-    unrouted,
+    outcome,
   );
-  return { settings, deleted, unrouted, route };
+  return { settings, deleted, outcome, route };
 };
+
+const deletion = { exchange: 'auth', routingKey: 'user.deleted' };
 
 describe('routeEvents', () => {
   it('hands an event to the route of its exchange and routing key', async () => {
@@ -33,7 +35,7 @@ describe('routeEvents', () => {
   });
 
   it('routes a dead letter moved back to the queue by where it was first published', async () => {
-    const { deleted, route } = setup();
+    const { deleted, outcome, route } = setup();
     const replayed = delivery('', 'meet-side-service', {
       'x-death': [
         { exchange: 'meet-side-service.dlx', 'routing-keys': ['user.settings.updated.dead'] },
@@ -42,6 +44,7 @@ describe('routeEvents', () => {
     });
     await route({}, replayed);
     expect(deleted).toHaveBeenCalledOnce();
+    expect(outcome).toHaveBeenCalledWith(deletion, 'handled');
   });
 
   it('reads x-death only for a message on the default exchange', async () => {
@@ -56,10 +59,38 @@ describe('routeEvents', () => {
   });
 
   it('reports and dead letters an event no route handles', async () => {
-    const { unrouted, route } = setup();
+    const { outcome, route } = setup();
     await expect(route({}, delivery('billing', 'invoice.paid'))).rejects.toBeInstanceOf(
       RejectedEventError,
     );
-    expect(unrouted).toHaveBeenCalledWith({ exchange: 'billing', routingKey: 'invoice.paid' });
+    expect(outcome).toHaveBeenCalledWith(
+      { exchange: 'billing', routingKey: 'invoice.paid' },
+      'unrouted',
+    );
+  });
+
+  it('reports an event the handler found stale', async () => {
+    const { deleted, outcome, route } = setup();
+    deleted.mockResolvedValue('stale');
+    await route({}, delivery('auth', 'user.deleted'));
+    expect(outcome).toHaveBeenCalledWith(deletion, 'stale');
+  });
+
+  it.each([
+    [new MalformedEventError('bad'), 'dropped'],
+    [new RejectedEventError('refused'), 'dead_lettered'],
+  ])('reports and rethrows %s', async (error, expected) => {
+    const { deleted, outcome, route } = setup();
+    deleted.mockRejectedValue(error);
+    await expect(route({}, delivery('auth', 'user.deleted'))).rejects.toBe(error);
+    expect(outcome).toHaveBeenCalledWith(deletion, expected);
+  });
+
+  it('reports nothing for a failure the client retries', async () => {
+    const { deleted, outcome, route } = setup();
+    const error = new Error('down');
+    deleted.mockRejectedValue(error);
+    await expect(route({}, delivery('auth', 'user.deleted'))).rejects.toBe(error);
+    expect(outcome).not.toHaveBeenCalled();
   });
 });

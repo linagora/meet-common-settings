@@ -1,18 +1,14 @@
 import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
 import type { Logger } from '../../infra/logger.js';
 import { hashEmail } from '../../infra/logger.js';
-import type { Metrics, Outcome } from '../../infra/metrics.js';
-import type { DbClient, UserSettingsUpdate } from '../../product/port.js';
+import type { DbClient, SettingsWrite, UserSettingsUpdate } from '../../product/port.js';
 import type { LanguageMapper } from './language.js';
 import { messageEnvelopeSchema } from './schema.js';
-
-type Applied = Exclude<Outcome, 'invalid_payload' | 'db_error' | 'rejected'>;
 
 export interface HandlerDeps {
   db: DbClient;
   mapLanguage: LanguageMapper;
   logger: Logger;
-  metrics: Metrics;
 }
 
 // Permanent: SQLSTATE class 22 (data exception), 23 (integrity constraint) and
@@ -27,18 +23,13 @@ const isPermanentError = (err: unknown): boolean => {
 
 export const handleMessage = async (
   rawMessage: unknown,
-  { db, mapLanguage, logger, metrics }: HandlerDeps,
-): Promise<Applied> => {
+  { db, mapLanguage, logger }: HandlerDeps,
+): Promise<SettingsWrite | 'no_syncable_fields'> => {
   const startedAt = Date.now();
-  const finish = <O extends Outcome>(outcome: O): O => {
-    metrics.observe(outcome, Date.now() - startedAt);
-    return outcome;
-  };
 
   const parsed = messageEnvelopeSchema.safeParse(rawMessage);
   if (!parsed.success) {
     logger.error({ issues: parsed.error.issues }, 'invalid message envelope');
-    finish('invalid_payload');
     throw new MalformedEventError('invalid settings message');
   }
 
@@ -49,7 +40,7 @@ export const handleMessage = async (
 
   if (!payload.email) {
     logger.warn({ requestId, version }, 'message missing email; cannot match user');
-    return finish('no_email');
+    throw new MalformedEventError('settings message without email');
   }
 
   const updates: UserSettingsUpdate = {};
@@ -70,7 +61,7 @@ export const handleMessage = async (
 
   if (updates.language === undefined && updates.timezone === undefined) {
     logger.info({ requestId, version }, 'no syncable fields in payload');
-    return finish('no_syncable_fields');
+    return 'no_syncable_fields';
   }
 
   const emailHash = hashEmail(payload.email);
@@ -98,24 +89,21 @@ export const handleMessage = async (
         'user settings updated',
       );
     }
-    return finish(write);
+    return write;
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
-    metrics.dbErrors.inc();
     const errCode = (error as { code?: string }).code;
     if (isPermanentError(error)) {
       logger.error(
         { requestId, version, emailHash, err: { message: error.message, code: errCode } },
         'permanent database error; dead lettering',
       );
-      finish('rejected');
       throw new RejectedEventError(error.message, { cause: error });
     }
     logger.warn(
       { requestId, version, emailHash, err: { message: error.message, code: errCode } },
       'transient database error; retrying',
     );
-    finish('db_error');
     throw error;
   }
 };

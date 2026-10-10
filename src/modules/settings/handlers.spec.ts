@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import pino from 'pino';
 import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
-import { createMetrics } from '../../infra/metrics.js';
 import { createFakeDb } from '../../product/fake.js';
 import { handleMessage } from './handlers.js';
 import { buildLanguageMapper } from './language.js';
@@ -15,7 +14,6 @@ const setup = (users = { 'alice@example.com': alice }) => {
     db,
     mapLanguage: buildLanguageMapper(),
     logger: pino({ level: 'silent' }),
-    metrics: createMetrics(),
   };
   return { db, handle: (message: unknown) => handleMessage(message, deps) };
 };
@@ -52,9 +50,9 @@ describe('handleMessage', () => {
     expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 
-  it('returns no_email when payload has no email', async () => {
+  it('drops a payload without email', async () => {
     const { db, handle } = setup();
-    expect(await handle(event({ language: 'en' }))).toBe('no_email');
+    await expect(handle(event({ language: 'en' }))).rejects.toBeInstanceOf(MalformedEventError);
     expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 

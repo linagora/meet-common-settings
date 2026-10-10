@@ -34,6 +34,6 @@ describe('buildMetricsApp', () => {
     const res = await buildMetricsApp(createMetrics(), logger).inject({ url: '/metrics' });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toMatch(/^text\/plain/);
-    expect(res.body).toContain('mss_messages_processed_total');
+    expect(res.body).toContain('mss_events_total');
   });
 });

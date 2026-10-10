@@ -72,24 +72,21 @@ Events can therefore be handled in any order and by several consumers at once.
 
 ## Failure modes and what they mean
 
-The handler classifies every outcome into one of eight labels, all reported as `mss_messages_processed_total{outcome=...}`:
+Every event ends in one outcome, counted in `mss_events_total{outcome=...}`:
 
-| Outcome              | What it means                                                               | Ack?                                             |
-| -------------------- | --------------------------------------------------------------------------- | ------------------------------------------------ |
-| `updated`            | Found the user, applied the change.                                         | Yes                                              |
-| `stale`              | The user's row changed after the event, which changes nothing.              | Yes                                              |
-| `unknown_user`       | No row matched the email. User probably hasn't logged into Meet yet.        | Yes                                              |
-| `no_email`           | Message had no email field. Can't match anyone.                             | Yes                                              |
-| `no_syncable_fields` | Message had no language or timezone (or only an unsupported language code). | Yes                                              |
-| `invalid_payload`    | JSON parsed but failed schema validation (`MalformedEventError`).           | Yes, dropped                                     |
-| `db_error`           | Postgres was unreachable, timed out, or answered a transient error.         | Throw → library retries with backoff, then DLQs  |
-| `rejected`           | Postgres answered a permanent error, a missing column for instance.         | No, dead lettered at once (`RejectedEventError`) |
+- `handled`: the change is applied, or there is nothing to apply. No row matches the email (the user has not logged into Meet yet), or the message has no language or timezone Meet keeps. Acked.
+- `stale`: the user's row changed after the event, which changes nothing. Acked.
+- `dropped`: the message fails its schema or has no email (`MalformedEventError`). Acked.
+- `dead_lettered`: Postgres or LinTO refused it for good, a missing column for instance (`RejectedEventError`), the retries ran out, or the message is not JSON.
+- `unrouted`: no handler for its exchange and routing key, see [One queue](#one-queue). Dead lettered.
+
+Postgres being unreachable, timing out or answering a transient error is not an outcome yet: the handler throws and the client retries.
 
 The "throw → retry → DLQ" path is provided by `@linagora/rabbitmq-client`: it catches the thrown error and retries up to `RABBITMQ_MAX_RETRIES` attempts, waiting `RABBITMQ_RETRY_DELAY` ms and doubling the wait up to `RABBITMQ_MAX_RETRY_DELAY` ms, then nacks to the dead-letter queue. A `RejectedEventError` skips the retries. The library also has reconnection logic for total broker outages.
 
 ## One queue
 
-Every event reaches the service through one quorum queue, `meet-side-service`, bound to each routing key it handles. The handler is picked by the exchange and routing key the event was published with. A dead letter moved back into the queue arrives on the default exchange and keeps that origin in its `x-death` header, which the router reads. An event with no handler is logged, counted in `mss_unrouted_total` and dead lettered.
+Every event reaches the service through one quorum queue, `meet-side-service`, bound to each routing key it handles. The handler is picked by the exchange and routing key the event was published with. A dead letter moved back into the queue arrives on the default exchange and keeps that origin in its `x-death` header, which the router reads. An event with no handler is logged, counted `unrouted` and dead lettered.
 
 The queue dead letters to its own exchange, `meet-side-service.dlx`, into `meet-side-service.dlq`, and caps broker redeliveries at 10. The exchanges it binds to belong to their publishers and are only checked, never declared.
 
