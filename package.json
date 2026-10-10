@@ -1,6 +1,6 @@
 {
   "name": "meet-side-service",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Side service of Meet: applies Twake settings and plan events to Meet's database and LinTO Studio",
   "type": "module",

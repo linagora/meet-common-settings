@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Individual account deletions come from `auth` / `user.deleted` (queue `meet.user.deleted`), keyed by `internalEmail`, instead of `auth` / `user.deletion.requested`
 - `@linagora/rabbitmq-client` 0.7.1
