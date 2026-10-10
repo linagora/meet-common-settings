@@ -68,6 +68,10 @@ Every message produces exactly one structured log line in pino's JSON format. Fi
 
 The library also emits its own logs through the same pino instance: connection events, retries, DLQ routings.
 
+### Errors
+
+With `SENTRY_DSN` set, every `error` and `fatal` log line becomes a Sentry event, tagged `service:meet-side-service` with the release `meet-side-service@<version>`. That includes the client's "Handler failed" line, so an outage of Postgres or LinTO sends one event per failed attempt, grouped into one issue.
+
 ## Common failure modes
 
 ### "I changed my language in common-settings but Meet still shows the old one"
@@ -121,6 +125,8 @@ All configuration is via environment variables. Defaults are listed in [`.env.ex
 | `LOG_LEVEL`                | no       | `info`      | pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`.                                                                                                            |
 | `HEALTH_PORT`              | no       | `8080`      | Port for `/health/live` and `/health/ready`.                                                                                                                               |
 | `METRICS_PORT`             | no       | `9464`      | Port for `/metrics`.                                                                                                                                                       |
+| `SENTRY_DSN`               | no       | none        | Secret. Sentry project DSN. Without it nothing is sent.                                                                                                                    |
+| `SENTRY_ENVIRONMENT`       | no       | none        | Sentry environment, for instance `dev` or `prod`.                                                                                                                          |
 | `SHUTDOWN_TIMEOUT_MS`      | no       | `10000`     | Grace period on SIGTERM. The broker client uses the same value as its `closeTimeout`, so this is how long we'll wait for in-flight handlers to finish before forcing exit. |
 
 The entitlement consumers are off unless `ENTITLEMENTS_ENABLED=true` (only `true` and `false` are accepted). When on, three more are required, and the service refuses to start without them:
