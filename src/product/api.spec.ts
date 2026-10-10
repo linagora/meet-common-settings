@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RejectedEventError } from '../events/errors.js';
 import { createLintoClient, LintoError } from './api.js';
 
 const linto = createLintoClient({
@@ -58,7 +59,21 @@ describe('createLintoClient', () => {
     expect(init).toMatchObject({ method: 'DELETE', body: undefined });
   });
 
-  it.each([400, 401, 403, 500, 503])(
+  it('accepts a 404 on DELETE, the user being already gone', async () => {
+    stubFetch(new Response('{"code":"not_found"}', { status: 404 }));
+    await expect(linto.deleteUser('jdoe@acme.com')).resolves.toBeUndefined();
+  });
+
+  it.each([400, 401, 403, 404, 409])('rejects the event for good on %i', async (status) => {
+    stubFetch(new Response('{"code":"invalid_body"}', { status }));
+    const err = await linto.putUser('jdoe@acme.com', body).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RejectedEventError);
+    expect((err as RejectedEventError).cause).toEqual(
+      new LintoError(status, '{"code":"invalid_body"}'),
+    );
+  });
+
+  it.each([429, 500, 503])(
     'throws %i after a single call, with the response body',
     async (status) => {
       const fetchMock = stubFetch(new Response('{"code":"invalid_body"}', { status }));
@@ -75,7 +90,7 @@ describe('createLintoClient', () => {
   });
 
   it('truncates a long error body', async () => {
-    stubFetch(new Response('x'.repeat(2_000), { status: 400 }));
+    stubFetch(new Response('x'.repeat(2_000), { status: 500 }));
     const err = await linto.putUser('a@b.com', body).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(LintoError);
     expect((err as LintoError).body).toHaveLength(500);

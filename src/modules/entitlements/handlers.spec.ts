@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import pino from 'pino';
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
+import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
 import { createMetrics } from '../../infra/metrics.js';
 import { LintoError } from '../../product/api.js';
 import { createFakeLinto } from '../../product/fake.js';
@@ -125,11 +126,11 @@ describe('entitlement bindings', () => {
     expect(linto.users.has('jdoe@twake.app')).toBe(false);
   });
 
-  it('user.deleted without a mail address is dead-lettered', async () => {
+  it('user.deleted without a mail address is malformed', async () => {
     const linto = createFakeLinto();
     await linto.putUser('jdoe@twake.app', { features: meet, updatedAt: publishedIso });
     const { result } = run('user.deleted', { userId: 'jdoe' }, linto);
-    await expect(result).rejects.toThrow(/invalid user.deleted/);
+    await expect(result).rejects.toThrow(MalformedEventError);
     expect(linto.users.has('jdoe@twake.app')).toBe(true);
   });
 
@@ -155,16 +156,24 @@ describe('handleEntitlement', () => {
     expect(linto.domains.get('acme.com')?.features).toEqual(meet);
   });
 
-  it('throws on an invalid message so it is dead-lettered, never acked', async () => {
+  it('throws a malformed event error on an invalid message', async () => {
     const linto = createFakeLinto();
     const { result, outcome } = run(
       'subscription.changed',
       { internalEmail: 'not-an-email' },
       linto,
     );
-    await expect(result).rejects.toThrow(/invalid subscription.changed/);
+    await expect(result).rejects.toThrow(MalformedEventError);
     expect(linto.users.size).toBe(0);
     expect(await outcome()).toBe('invalid');
+  });
+
+  it('counts a call LinTO refuses for good as rejected', async () => {
+    const linto = createFakeLinto();
+    linto.failWith(new RejectedEventError('LinTO Studio answered 400'));
+    const { result, outcome } = run('domain.organization.deleted', { domain: 'acme.com' }, linto);
+    await expect(result).rejects.toBeInstanceOf(RejectedEventError);
+    expect(await outcome()).toBe('rejected');
   });
 
   it('rethrows a LinTO failure', async () => {

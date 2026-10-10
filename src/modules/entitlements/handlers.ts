@@ -1,5 +1,6 @@
 import type { RabbitMQMessageProperties } from '@linagora/rabbitmq-client';
 import { z } from 'zod';
+import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
 import { hashEmail, type Logger } from '../../infra/logger.js';
 import type { Metrics } from '../../infra/metrics.js';
 import type { LintoClient } from '../../product/port.js';
@@ -92,8 +93,6 @@ export interface EntitlementDeps {
   metrics: Metrics;
 }
 
-// Anything not applied throws, so the client retries then dead-letters it:
-// an ack would leave the subject wrong with nothing but a counter to show it.
 export const handleEntitlement = async (
   { routingKey, schema, apply, subjectOf }: EntitlementBinding,
   message: unknown,
@@ -106,7 +105,7 @@ export const handleEntitlement = async (
   if (!parsed.success) {
     count('invalid');
     logger.error({ routingKey, issues: parsed.error.issues }, 'invalid entitlement message');
-    throw new Error(`invalid ${routingKey} message`);
+    throw new MalformedEventError(`invalid ${routingKey} message`);
   }
 
   const subjectHash = hashEmail(subjectOf(parsed.data));
@@ -120,8 +119,12 @@ export const handleEntitlement = async (
       ignored ? 'entitlement older than LinTO state; ignored' : 'entitlement applied',
     );
   } catch (err) {
-    count('failed');
-    logger.warn({ routingKey, subjectHash, err }, 'entitlement call failed');
+    const rejected = err instanceof RejectedEventError;
+    count(rejected ? 'rejected' : 'failed');
+    logger.warn(
+      { routingKey, subjectHash, err },
+      rejected ? 'entitlement refused by LinTO; dead lettering' : 'entitlement call failed',
+    );
     throw err;
   }
 };

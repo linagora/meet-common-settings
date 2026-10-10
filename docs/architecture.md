@@ -71,17 +71,17 @@ That gives us strict serial processing without any application-side state.
 
 The handler classifies every outcome into one of seven labels, all reported as `mss_messages_processed_total{outcome=...}`:
 
-| Outcome              | What it means                                                               | Ack?                                            |
-| -------------------- | --------------------------------------------------------------------------- | ----------------------------------------------- |
-| `updated`            | Found the user, applied the change.                                         | Yes                                             |
-| `unknown_user`       | No row matched the email. User probably hasn't logged into Meet yet.        | Yes                                             |
-| `no_email`           | Message had no email field. Can't match anyone.                             | Yes                                             |
-| `no_syncable_fields` | Message had no language or timezone (or only an unsupported language code). | Yes                                             |
-| `invalid_payload`    | JSON parsed but failed schema validation.                                   | Yes (poison)                                    |
-| `db_error`           | Postgres returned a transient error (connection refused, deadlock, etc.).   | Throw → library retries with backoff, then DLQs |
-| `unexpected_error`   | Postgres returned a permanent error (column missing, etc.).                 | Yes                                             |
+| Outcome              | What it means                                                               | Ack?                                             |
+| -------------------- | --------------------------------------------------------------------------- | ------------------------------------------------ |
+| `updated`            | Found the user, applied the change.                                         | Yes                                              |
+| `unknown_user`       | No row matched the email. User probably hasn't logged into Meet yet.        | Yes                                              |
+| `no_email`           | Message had no email field. Can't match anyone.                             | Yes                                              |
+| `no_syncable_fields` | Message had no language or timezone (or only an unsupported language code). | Yes                                              |
+| `invalid_payload`    | JSON parsed but failed schema validation (`MalformedEventError`).           | Yes, dropped                                     |
+| `db_error`           | Postgres was unreachable, timed out, or answered a transient error.         | Throw → library retries with backoff, then DLQs  |
+| `rejected`           | Postgres answered a permanent error, a missing column for instance.         | No, dead lettered at once (`RejectedEventError`) |
 
-The "throw → retry → DLQ" path is provided by `@linagora/rabbitmq-client`: it catches the thrown error, retries up to `RABBITMQ_MAX_RETRIES` times with `RABBITMQ_RETRY_DELAY` ms between attempts, then nacks to the dead-letter queue. The library also has reconnection logic for total broker outages.
+The "throw → retry → DLQ" path is provided by `@linagora/rabbitmq-client`: it catches the thrown error and retries up to `RABBITMQ_MAX_RETRIES` attempts, waiting `RABBITMQ_RETRY_DELAY` ms and doubling the wait up to `RABBITMQ_MAX_RETRY_DELAY` ms, then nacks to the dead-letter queue. A `RejectedEventError` skips the retries. The library also has reconnection logic for total broker outages.
 
 ## Entitlements
 

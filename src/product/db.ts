@@ -19,7 +19,11 @@ export const createDbClient = ({ databaseUrl, userTable, poolSize = 2 }: DbOptio
     throw new Error(`Refusing to use unsafe table identifier: ${userTable}`);
   }
 
-  const client = postgres(databaseUrl, { max: poolSize });
+  const client = postgres(databaseUrl, {
+    max: poolSize,
+    connect_timeout: 10,
+    connection: { statement_timeout: 5_000 },
+  });
   const db: PostgresJsDatabase = drizzle(client);
   const meetUser: MeetUserTable = buildMeetUserTable(userTable);
 

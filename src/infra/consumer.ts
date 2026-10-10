@@ -1,5 +1,6 @@
 import { RabbitMQClient } from '@linagora/rabbitmq-client';
 import type { Config } from '../config.js';
+import { dropMalformed } from '../events/errors.js';
 import { entitlementBindings, handleEntitlement } from '../modules/entitlements/handlers.js';
 import { handleMessage, type HandlerDeps } from '../modules/settings/handlers.js';
 import type { LintoClient } from '../product/port.js';
@@ -47,12 +48,8 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
         config.RABBITMQ_EXCHANGE,
         config.RABBITMQ_ROUTING_KEY,
         config.RABBITMQ_QUEUE,
-        async (message: Record<string, unknown>) => {
-          const result = await handleMessage(message, deps);
-          if (result.status === 'transient_error') {
-            throw result.error;
-          }
-        },
+        dropMalformed((message: Record<string, unknown>) => handleMessage(message, deps), logger),
+        { maxRetryDelay: config.RABBITMQ_MAX_RETRY_DELAY },
       );
       const { linto } = deps;
       if (linto) {
@@ -61,11 +58,14 @@ export const createConsumer = (deps: ConsumerDeps): Consumer => {
             binding.exchange,
             binding.routingKey,
             `meet.${binding.routingKey}`,
-            (message, properties) =>
-              handleEntitlement(binding, message, properties, { ...deps, linto }),
+            dropMalformed(
+              (message, properties) =>
+                handleEntitlement(binding, message, properties, { ...deps, linto }),
+              logger,
+            ),
             // Ordering holds only one message at a time, whatever RABBITMQ_PREFETCH
             // the settings queue runs with.
-            { concurrency: 1 },
+            { concurrency: 1, maxRetryDelay: config.RABBITMQ_MAX_RETRY_DELAY },
           );
         }
       } else {

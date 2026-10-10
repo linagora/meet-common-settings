@@ -1,3 +1,4 @@
+import { RejectedEventError } from '../events/errors.js';
 import type { EntitlementBody, LintoClient } from './port.js';
 
 export interface LintoOptions {
@@ -19,6 +20,8 @@ export class LintoError extends Error {
   }
 }
 
+const isPermanent = (status: number) => status >= 400 && status < 500 && status !== 429;
+
 export const createLintoClient = ({
   baseUrl,
   token,
@@ -36,8 +39,10 @@ export const createLintoClient = ({
       body: body && JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) throw new LintoError(res.status, (await res.text()).slice(0, MAX_ERROR_BODY));
-    return res;
+    if (res.ok || (method === 'DELETE' && res.status === 404)) return res;
+    const error = new LintoError(res.status, (await res.text()).slice(0, MAX_ERROR_BODY));
+    if (isPermanent(res.status)) throw new RejectedEventError(error.message, { cause: error });
+    throw error;
   };
 
   const put = async (path: string, body: EntitlementBody) => {

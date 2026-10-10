@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import pino from 'pino';
+import { MalformedEventError, RejectedEventError } from '../../events/errors.js';
 import { createMetrics } from '../../infra/metrics.js';
 import { createFakeDb } from '../../product/fake.js';
 import { handleMessage } from './handlers.js';
@@ -18,6 +19,9 @@ const setup = (users = { 'alice@example.com': alice }) => {
   return { db, handle: (message: unknown) => handleMessage(message, deps) };
 };
 
+const update = { payload: { email: 'alice@example.com', language: 'en' } };
+const postgresError = (code: string) => ({ name: 'PostgresError', code });
+
 describe('handleMessage', () => {
   it('updates language and timezone when both are present', async () => {
     const { db, handle } = setup();
@@ -27,7 +31,7 @@ describe('handleMessage', () => {
       version: 1,
       payload: { email: 'Alice@example.com', language: 'en', timezone: 'Europe/Paris' },
     });
-    expect(result).toEqual({ status: 'ok', outcome: 'updated' });
+    expect(result).toBe('updated');
     expect(db.users.get('alice@example.com')).toEqual({
       language: 'en-us',
       timezone: 'Europe/Paris',
@@ -36,8 +40,7 @@ describe('handleMessage', () => {
 
   it('returns no_email when payload has no email', async () => {
     const { db, handle } = setup();
-    const result = await handle({ payload: { language: 'en' } });
-    expect(result).toEqual({ status: 'ok', outcome: 'no_email' });
+    expect(await handle({ payload: { language: 'en' } })).toBe('no_email');
     expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 
@@ -46,7 +49,7 @@ describe('handleMessage', () => {
     const result = await handle({
       payload: { email: 'alice@example.com', display_name: 'Alice' },
     });
-    expect(result).toEqual({ status: 'ok', outcome: 'no_syncable_fields' });
+    expect(result).toBe('no_syncable_fields');
     expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 
@@ -55,7 +58,7 @@ describe('handleMessage', () => {
     const result = await handle({
       payload: { email: 'alice@example.com', language: 'es', timezone: 'Europe/Berlin' },
     });
-    expect(result).toEqual({ status: 'ok', outcome: 'updated' });
+    expect(result).toBe('updated');
     expect(db.users.get('alice@example.com')).toEqual({
       language: 'fr-fr',
       timezone: 'Europe/Berlin',
@@ -64,67 +67,45 @@ describe('handleMessage', () => {
 
   it('returns no_syncable_fields when only an unmappable language is provided', async () => {
     const { db, handle } = setup();
-    const result = await handle({
-      payload: { email: 'alice@example.com', language: 'es' },
-    });
-    expect(result).toEqual({ status: 'ok', outcome: 'no_syncable_fields' });
+    const result = await handle({ payload: { email: 'alice@example.com', language: 'es' } });
+    expect(result).toBe('no_syncable_fields');
     expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 
   it('returns unknown_user when no Meet user matches', async () => {
     const { handle } = setup();
     const result = await handle({ payload: { email: 'ghost@example.com', language: 'en' } });
-    expect(result).toEqual({ status: 'ok', outcome: 'unknown_user' });
+    expect(result).toBe('unknown_user');
   });
 
-  it('returns invalid_payload for non-object input', async () => {
+  it.each([
+    ['non-object input', 'not an object'],
+    ['an envelope without payload', { nickname: 'alice' }],
+    ['an invalid email', { payload: { email: 'not-an-email', language: 'en' } }],
+  ])('throws a malformed event error on %s', async (_, message) => {
     const { db, handle } = setup();
-    expect(await handle('not an object')).toEqual({ status: 'ok', outcome: 'invalid_payload' });
+    await expect(handle(message)).rejects.toBeInstanceOf(MalformedEventError);
     expect(db.users.get('alice@example.com')).toEqual(alice);
   });
 
-  it('returns invalid_payload when envelope is missing payload', async () => {
+  it.each([
+    ['connection refused', { code: 'ECONNREFUSED' }],
+    ['a Postgres class 08 error', postgresError('08006')],
+    ['a statement timeout', postgresError('57014')],
+    ['a deadlock', postgresError('40P01')],
+  ])('rethrows %s for the client to retry', async (_, props) => {
     const { db, handle } = setup();
-    expect(await handle({ nickname: 'alice' })).toEqual({
-      status: 'ok',
-      outcome: 'invalid_payload',
-    });
-    expect(db.users.get('alice@example.com')).toEqual(alice);
+    const error = Object.assign(new Error('connection lost'), props);
+    db.failWith(error);
+    await expect(handle(update)).rejects.toBe(error);
   });
 
-  it('returns invalid_payload when email is not a valid email', async () => {
+  it('dead letters a permanent database error', async () => {
     const { db, handle } = setup();
-    const result = await handle({ payload: { email: 'not-an-email', language: 'en' } });
-    expect(result).toEqual({ status: 'ok', outcome: 'invalid_payload' });
-    expect(db.users.get('alice@example.com')).toEqual(alice);
-  });
-
-  it('returns transient_error for connection refused', async () => {
-    const { db, handle } = setup();
-    db.failWith(
-      Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' }),
-    );
-    const result = await handle({
-      payload: { email: 'alice@example.com', language: 'en' },
-    });
-    expect(result.status).toBe('transient_error');
-  });
-
-  it('returns transient_error for Postgres class 08 errors', async () => {
-    const { db, handle } = setup();
-    db.failWith(Object.assign(new Error('connection lost'), { code: '08006' }));
-    const result = await handle({
-      payload: { email: 'alice@example.com', language: 'en' },
-    });
-    expect(result.status).toBe('transient_error');
-  });
-
-  it("returns ok with unexpected_error outcome for permanent DB errors so the queue isn't poisoned", async () => {
-    const { db, handle } = setup();
-    db.failWith(Object.assign(new Error('column does not exist'), { code: '42703' }));
-    const result = await handle({
-      payload: { email: 'alice@example.com', language: 'en' },
-    });
-    expect(result).toEqual({ status: 'ok', outcome: 'unexpected_error' });
+    const error = Object.assign(new Error('column does not exist'), postgresError('42703'));
+    db.failWith(error);
+    const err = await handle(update).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RejectedEventError);
+    expect((err as RejectedEventError).cause).toBe(error);
   });
 });

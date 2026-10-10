@@ -7,7 +7,7 @@ export type Outcome =
   | 'no_syncable_fields'
   | 'invalid_payload'
   | 'db_error'
-  | 'unexpected_error';
+  | 'rejected';
 
 export interface Metrics {
   registry: Registry;
@@ -45,7 +45,7 @@ export const createMetrics = (): Metrics => {
 
   const entitlementCalls = new Counter({
     name: 'mss_entitlement_calls_total',
-    help: 'Entitlement handler attempts by routing key and outcome (applied, ignored, invalid, failed)',
+    help: 'Entitlement handler attempts by routing key and outcome (applied, ignored, invalid, rejected, failed)',
     labelNames: ['event', 'outcome'] as const,
     registers: [registry],
   });
